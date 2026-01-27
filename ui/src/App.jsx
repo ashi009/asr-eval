@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useParams, useNavigate, Navigate } from 'react-router-dom';
-import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2 } from 'lucide-react';
+import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2, Copy } from 'lucide-react';
 import { getServiceConfig } from './config';
 import { smartDiff } from './diffUtils';
 
@@ -15,7 +15,7 @@ const renderDiff = (original, revised) => {
       {diffs.map((part, index) => {
         if (part.added) {
           return (
-            <span key={index} className="bg-green-100 text-green-700 font-medium px-0.5 rounded mx-0.5 animate-in fade-in duration-300">
+            <span key={index} className="bg-green-100 text-green-700 font-medium px-0.5 rounded mx-0.5 animate-in fade-in duration-300 select-none">
               {part.value}
             </span>
           );
@@ -613,6 +613,16 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
                     </div>
                     <h3 className={`text-sm font-bold uppercase tracking-wide ${isSelected ? color.text : 'text-slate-500'}`}>{name}</h3>
                   </div>
+                  <button
+                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(kase.results[p]);
+                    }}
+                    title="Copy original transcript"
+                  >
+                    <Copy size={14} />
+                  </button>
                 </div>
                 <div className="p-4 text-sm leading-relaxed text-slate-700 min-h-[100px] flex-1">
                   {renderDiff(kase.results[p], aiRes?.revised_transcript)}
