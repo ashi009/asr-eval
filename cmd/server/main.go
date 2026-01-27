@@ -23,6 +23,7 @@ type FileData struct {
 	Evaluation           Evaluation                `json:"evaluation"`
 	AIResults            map[string]llm.EvalResult `json:"ai_results"`
 	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
+	EvaluatedTranscripts map[string]string         `json:"evaluated_transcripts"`
 }
 
 type Evaluation struct {
@@ -33,6 +34,7 @@ type Evaluation struct {
 type AIResultFile struct {
 	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
 	Results              map[string]llm.EvalResult `json:"results"`
+	EvaluatedTranscripts map[string]string         `json:"evaluated_transcripts"`
 }
 
 var datasetDir string
@@ -185,6 +187,7 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 				if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
 					data.AIResults = fileData.Results
 					data.EvaluatedGroundTruth = fileData.EvaluatedGroundTruth
+					data.EvaluatedTranscripts = fileData.EvaluatedTranscripts
 				} else {
 					// Fallback
 					json.Unmarshal(content, &data.AIResults)
@@ -298,6 +301,7 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	// Merge existing results (taking precedence if not overwritten)
 	// 1. Start with what's on disk (safest source of truth)
 	finalResults := make(map[string]llm.EvalResult)
+	evaluatedTranscripts := make(map[string]string)
 	var evaluatedGroundTruth string
 
 	filename := filepath.Join(datasetDir, req.ID+".result.json")
@@ -307,10 +311,15 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 		if err := json.Unmarshal(fileBytes, &fileData); err == nil && fileData.Results != nil {
 			finalResults = fileData.Results
 			evaluatedGroundTruth = fileData.EvaluatedGroundTruth
+			evaluatedTranscripts = fileData.EvaluatedTranscripts
 		} else {
 			// Old format
 			json.Unmarshal(fileBytes, &finalResults)
 		}
+	}
+
+	if evaluatedTranscripts == nil {
+		evaluatedTranscripts = make(map[string]string)
 	}
 
 	// 2. Merge frontend provided existing results (optional, but respects request payload)
@@ -321,6 +330,10 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	// 3. Overwrite with new evaluations
 	for k, v := range results {
 		finalResults[k] = v
+		// Also update the evaluated transcript for this service
+		if transcript, ok := req.Results[k]; ok {
+			evaluatedTranscripts[k] = transcript
+		}
 	}
 
 	// Update processed GT to current one
@@ -330,6 +343,7 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	fileData := AIResultFile{
 		EvaluatedGroundTruth: evaluatedGroundTruth,
 		Results:              finalResults,
+		EvaluatedTranscripts: evaluatedTranscripts,
 	}
 
 	data, _ := json.MarshalIndent(fileData, "", "  ")

@@ -36,10 +36,52 @@ function Layout() {
   const [cases, setCases] = useState([]);
   const [search, setSearch] = useState("");
   const [processingCases, setProcessingCases] = useState(new Set()); // Track evaluating case IDs
+  const [caseSelections, setCaseSelections] = useState({}); // Lifted selection state
 
   // Shared state for optimistic updates
   const updateCaseLocal = (id, updates) => {
     setCases(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  // Selection helper
+  const initSelection = (data) => {
+    const initialSelection = {};
+    if (data.results) {
+      Object.keys(data.results).forEach(service => {
+        const config = getServiceConfig(service);
+        // Auto-select if enabled AND not already evaluated
+        const isEnabled = config.enabled !== false;
+        const hasResult = data.ai_results && data.ai_results[service];
+
+        // Also check if transcript is stale
+        let isStale = false;
+        if (hasResult && data.evaluated_transcripts && data.results[service]) {
+          if (data.evaluated_transcripts[service] !== data.results[service]) {
+            isStale = true;
+          }
+        }
+
+        initialSelection[service] = isEnabled && (!hasResult || isStale);
+      });
+    }
+    return initialSelection;
+  };
+
+  const getSelection = (id) => caseSelections[id];
+  const updateSelection = (id, loadingData) => {
+    // If we are loading fresh data and have no selection, init it.
+    // OR if we are forcing a reset (loadingData passed with cleared results)
+    if (!caseSelections[id] || loadingData) {
+      setCaseSelections(prev => ({
+        ...prev,
+        [id]: initSelection(loadingData || {}) // This might be buggy if called without data first, but usage below handles it.
+      }));
+    }
+  };
+
+  // Direct setter for manual toggles
+  const setSelectionForCase = (id, newVal) => {
+    setCaseSelections(prev => ({ ...prev, [id]: newVal }));
   };
 
   // Eval status handlers
@@ -239,6 +281,9 @@ function Layout() {
               processingCases={processingCases}
               startProcessing={startProcessing}
               endProcessing={endProcessing}
+              getSelection={getSelection}
+              setSelectionForCase={setSelectionForCase}
+              initSelection={initSelection}
             />
           } />
         </Routes>
@@ -247,12 +292,16 @@ function Layout() {
   );
 }
 
-function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProcessing }) {
+function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProcessing, getSelection, setSelectionForCase, initSelection }) {
   const { id } = useParams();
   const idRef = useRef(id); // Track current ID to prevent stale updates
   const [currentCase, setCurrentCase] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedServices, setSelectedServices] = useState({});
+  // Use lifted selection state helpers
+  // const selectedServices = getSelection(id) || {}; // REMOVED
+  // const setSelectedServices = (newVal) => setSelectionForCase(id, newVal); // REMOVED
+
   const [isInputExpanded, setIsInputExpanded] = useState(true);
 
   // Keep ref in sync
@@ -285,18 +334,21 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
 
           setCurrentCase(data);
 
-          // Initialize selected services based on config and available results
-          const initialSelection = {};
-          if (data && data.results) {
-            Object.keys(data.results).forEach(service => {
-              const config = getServiceConfig(service);
-              // Auto-select if enabled AND not already evaluated
-              const isEnabled = config.enabled !== false;
-              const hasResult = data.ai_results && data.ai_results[service];
-              initialSelection[service] = isEnabled && !hasResult;
-            });
+          // Initialize selected services
+          // Rule: If currently processing, restore persisted selection.
+          // Otherwise, use default rules (stale/unevaluated).
+          if (processingCases.has(id)) {
+            const persisted = getSelection(id);
+            if (persisted) {
+              setSelectedServices(persisted);
+            } else {
+              // Fallback if no persisted state found (shouldn't happen if runEval saves it)
+              setSelectedServices(initSelection(data));
+            }
+          } else {
+            // Not processing, always reset to default rules on fresh load
+            setSelectedServices(initSelection(data));
           }
-          setSelectedServices(initialSelection);
 
           // Auto-collapse if ground truth exists
           if (data.evaluation?.ground_truth?.trim()) {
@@ -308,7 +360,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
       } catch (e) {
         console.error(e);
       } finally {
-        if (mounted.current) setLoading(false);
+        if (mounted.current && idRef.current === id) setLoading(false);
       }
     };
     if (id) fetchCase();
@@ -371,7 +423,10 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
       return alert("Please select at least one service to evaluate.");
     }
 
+    // Persist selection before starting
+    setSelectionForCase(evalId, selectedServices);
     startProcessing(evalId);
+
     try {
       const res = await fetch('/api/evaluate-llm', {
         method: 'POST',
@@ -388,10 +443,15 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
 
       // Check against current ID using Ref to avoid stale closure
       if (idRef.current === evalId) {
-        updateCaseLocal({
+        const newData = {
+          ...currentCase,
           ai_results: aiResults,
-          evaluated_ground_truth: gt // We know this is the new baseline
-        });
+          evaluated_ground_truth: gt
+        };
+        updateCaseLocal(newData);
+
+        // Refresh selection based on new results (should uncheck the just-evaluated ones)
+        setSelectedServices(initSelection(newData));
       }
       if (onEvalComplete) onEvalComplete();
     } catch (e) {
@@ -529,7 +589,12 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
                           const res = await fetch(`/api/reset-eval?id=${currentCase.id}`, { method: 'POST' });
                           if (!res.ok) throw await res.text();
                           onEvalComplete();
-                          setCurrentCase(prev => ({ ...prev, ai_results: {}, evaluated_ground_truth: null }));
+
+                          const resetData = { ...currentCase, ai_results: {}, evaluated_ground_truth: null };
+                          setCurrentCase(resetData);
+                          // Force reset selection
+                          const newSelection = initSelection(resetData);
+                          setSelectedServices(newSelection);
                         } catch (e) {
                           alert("Failed to reset: " + e);
                         }
@@ -543,7 +608,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
               )}
           </div>
         </div>
-      </div >
+      </div>
     </>
   );
 }
@@ -556,6 +621,12 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
   const scrollToProvider = (p) => {
     const el = document.getElementById(`panel-${p}`);
     if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const isStale = (service) => {
+    if (!kase.ai_results?.[service]) return false;
+    if (!kase.evaluated_transcripts?.[service]) return false;
+    return kase.evaluated_transcripts[service] !== kase.results[service];
   };
 
   return (
@@ -640,6 +711,7 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
           const config = getServiceConfig(p);
           const { color, name } = config;
           const isSelected = !!selectedServices?.[p];
+          const stale = isStale(p);
 
           return (
             <div
@@ -663,6 +735,11 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
                       <Check size={12} strokeWidth={4} className={`transform transition-transform duration-200 ${isSelected ? 'scale-100' : 'scale-0'}`} />
                     </div>
                     <h3 className={`text-sm font-bold uppercase tracking-wide ${isSelected ? color.text : 'text-slate-500'}`}>{name}</h3>
+                    {stale && (
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold uppercase tracking-wider ml-2 animate-pulse">
+                        <AlertTriangle size={10} /> Outdated
+                      </div>
+                    )}
                   </div>
                   <button
                     className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded transition-colors"
