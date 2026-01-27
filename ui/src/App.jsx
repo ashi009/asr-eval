@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useParams, useNavigate, Navigate } from 'react-router-dom';
-import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2, Copy, AlertTriangle } from 'lucide-react';
+import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2, Copy, AlertTriangle, Minus, ArrowUpAZ, ArrowDown01 } from 'lucide-react';
 import { getServiceConfig } from './config';
 import { smartDiff } from './diffUtils';
 
@@ -312,6 +312,9 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
     return () => { mounted.current = false; };
   }, [id]);
 
+  // Scroll container ref
+  const scrollContainerRef = useRef(null);
+
   // Player
   const audioRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -366,7 +369,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
     if (id) fetchCase();
   }, [id]);
 
-  // Reset player when case changes
+  // Reset player and scroll to top when case changes
   useEffect(() => {
     if (currentCase && audioRef.current) {
       audioRef.current.src = `/audio/${currentCase.id}.flac`;
@@ -374,6 +377,10 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
       setIsPlaying(false);
       setCurrentTime(0);
       setDuration(0);
+    }
+    // Scroll to top when case changes
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
     }
   }, [currentCase?.id]);
 
@@ -473,154 +480,200 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
       {/* Player Header Removed (Moved to Footer) */}
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
 
 
         <ResultsView
           kase={currentCase}
           selectedServices={selectedServices}
           onToggleService={toggleServiceSelection}
+          onSelectAll={() => {
+            const allServices = Object.keys(currentCase.results);
+            const newSelection = {};
+            allServices.forEach(s => newSelection[s] = true);
+            setSelectedServices(newSelection);
+          }}
+          onDeselectAll={() => {
+            setSelectedServices({});
+          }}
+          onSelectDefault={() => {
+            setSelectedServices(initSelection(currentCase));
+          }}
+          getDefaultSelection={() => initSelection(currentCase)}
         />
       </div>
 
       {/* Ground Truth Footer */}
-      <div className="bg-white border-t border-slate-200 p-4 shrink-0 z-10 transition-all duration-300">
-        <div className="max-w-5xl mx-auto">
-          {/* Playback Controls */}
-          <div className="flex items-center gap-4 mb-4 border-b border-slate-100 pb-3">
-            <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center hover:opacity-90 shrink-0">
-              {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
-            </button>
-            <div className="flex-1">
-              <div className="flex justify-between text-[10px] font-medium text-slate-500 mb-1">
-                <span className="font-bold text-slate-700">Playback</span>
-                <span className="font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
-              </div>
-              <div
-                className="relative h-1.5 bg-slate-100 rounded-full cursor-pointer group"
-                onClick={e => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const pct = (e.clientX - rect.left) / rect.width;
-                  if (audioRef.current) {
-                    audioRef.current.currentTime = pct * duration;
-                    if (audioRef.current.paused) {
-                      audioRef.current.play();
-                      setIsPlaying(true);
-                    }
-                  }
-                }}
-              >
-                <div className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all" style={{ width: `${(currentTime / duration) * 100}%` }} />
-              </div>
+      <div className="bg-white border-t border-slate-200 px-8 py-4 shrink-0 z-10 transition-all duration-300">
+        {/* Playback Controls */}
+        <div className="flex items-center gap-4 mb-4 border-b border-slate-100 pb-3">
+          <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center hover:opacity-90 shrink-0">
+            {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+          </button>
+          <div className="flex-1">
+            <div className="flex justify-between text-[10px] font-medium text-slate-500 mb-1">
+              <span className="font-bold text-slate-700">Playback</span>
+              <span className="font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
             </div>
-            <audio
-              ref={audioRef}
-              onTimeUpdate={e => setCurrentTime(e.target.currentTime)}
-              onLoadedMetadata={e => setDuration(e.target.duration)}
-              onEnded={() => setIsPlaying(false)}
-            />
+            <div
+              className="relative h-1.5 bg-slate-100 rounded-full cursor-pointer group"
+              onClick={e => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = (e.clientX - rect.left) / rect.width;
+                if (audioRef.current) {
+                  audioRef.current.currentTime = pct * duration;
+                  if (audioRef.current.paused) {
+                    audioRef.current.play();
+                    setIsPlaying(true);
+                  }
+                }
+              }}
+            >
+              <div className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all" style={{ width: `${(currentTime / duration) * 100}%` }} />
+            </div>
+          </div>
+          <audio
+            ref={audioRef}
+            onTimeUpdate={e => setCurrentTime(e.target.currentTime)}
+            onLoadedMetadata={e => setDuration(e.target.duration)}
+            onEnded={() => setIsPlaying(false)}
+          />
+        </div>
+
+        {/* Ground Truth Section */}
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <div
+              className="flex items-center gap-2 cursor-pointer select-none"
+              onClick={() => setIsInputExpanded(!isInputExpanded)}
+            >
+              <label className="text-sm font-bold flex items-center gap-2 cursor-pointer">
+                <Check className={`w-4 h-4 transition-colors ${currentCase.evaluation?.ground_truth ? 'text-green-500' : 'text-slate-400'}`} />
+                Ground Truth
+              </label>
+              <span className="text-xs text-slate-400 hover:text-primary transition-colors">
+                {isInputExpanded ? '(Click to collapse)' : '(Click to expand)'}
+              </span>
+            </div>
+            <button
+              onClick={runEval}
+              disabled={isProcessingThisCase}
+              className="bg-primary hover:bg-blue-600 disabled:opacity-50 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-colors ml-auto"
+            >
+              {isProcessingThisCase ? 'Running...' : <><Play size={12} /> Run AI Eval ({Object.values(selectedServices).filter(Boolean).length})</>}
+            </button>
           </div>
 
-          {/* Ground Truth Section */}
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <div
-                className="flex items-center gap-2 cursor-pointer select-none"
-                onClick={() => setIsInputExpanded(!isInputExpanded)}
-              >
-                <label className="text-sm font-bold flex items-center gap-2 cursor-pointer">
-                  <Check className={`w-4 h-4 transition-colors ${currentCase.evaluation?.ground_truth ? 'text-green-500' : 'text-slate-400'}`} />
-                  Ground Truth
-                </label>
-                <span className="text-xs text-slate-400 hover:text-primary transition-colors">
-                  {isInputExpanded ? '(Click to collapse)' : '(Click to expand)'}
-                </span>
-              </div>
-              <button
-                onClick={runEval}
-                disabled={isProcessingThisCase}
-                className="bg-primary hover:bg-blue-600 disabled:opacity-50 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-colors ml-auto"
-              >
-                {isProcessingThisCase ? 'Running...' : <><Play size={12} /> Run AI Eval ({Object.values(selectedServices).filter(Boolean).length})</>}
-              </button>
+          {isInputExpanded ? (
+            <textarea
+              className="w-full h-32 border border-slate-200 rounded p-3 text-sm font-mono focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-slate-50 disabled:text-slate-500 animate-in fade-in zoom-in-95 duration-200"
+              placeholder="Enter ground truth..."
+              value={currentCase.evaluation?.ground_truth || ""}
+              onChange={e => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: e.target.value } })}
+              disabled={isProcessingThisCase}
+              autoFocus
+            />
+          ) : (
+            <div
+              className="w-full bg-slate-50 border border-slate-200 rounded p-2 text-sm text-slate-600 font-mono italic cursor-pointer hover:border-slate-300 hover:bg-slate-100 transition-colors truncate"
+              onClick={() => setIsInputExpanded(true)}
+              title={currentCase.evaluation?.ground_truth}
+            >
+              {currentCase.evaluation?.ground_truth || "No ground truth provided"}
             </div>
+          )}
 
-            {isInputExpanded ? (
-              <textarea
-                className="w-full h-32 border border-slate-200 rounded p-3 text-sm font-mono focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-slate-50 disabled:text-slate-500 animate-in fade-in zoom-in-95 duration-200"
-                placeholder="Enter ground truth..."
-                value={currentCase.evaluation?.ground_truth || ""}
-                onChange={e => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: e.target.value } })}
-                disabled={isProcessingThisCase}
-                autoFocus
-              />
-            ) : (
-              <div
-                className="w-full bg-slate-50 border border-slate-200 rounded p-2 text-sm text-slate-600 font-mono italic cursor-pointer hover:border-slate-300 hover:bg-slate-100 transition-colors truncate"
-                onClick={() => setIsInputExpanded(true)}
-                title={currentCase.evaluation?.ground_truth}
-              >
-                {currentCase.evaluation?.ground_truth || "No ground truth provided"}
+          {/* GT Mismatch Warning */}
+          {currentCase.ai_results && Object.keys(currentCase.ai_results).length > 0 &&
+            currentCase.evaluated_ground_truth &&
+            currentCase.evaluation?.ground_truth &&
+            currentCase.evaluated_ground_truth !== currentCase.evaluation.ground_truth && (
+              <div className="mt-1 px-3 py-2 bg-amber-50 border border-amber-200 rounded flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-amber-600" />
+                  <span className="text-xs font-medium text-amber-800">Results outdated</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: currentCase.evaluated_ground_truth } })}
+                    className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
+                  >
+                    Revert GT
+                  </button>
+                  <div className="w-px h-3 bg-amber-300"></div>
+                  <button
+                    onClick={async () => {
+                      if (!confirm("Are you sure you want to delete all evaluation results for this case?")) return;
+                      try {
+                        const res = await fetch(`/api/reset-eval?id=${currentCase.id}`, { method: 'POST' });
+                        if (!res.ok) throw await res.text();
+                        onEvalComplete();
+
+                        const resetData = { ...currentCase, ai_results: {}, evaluated_ground_truth: null };
+                        setCurrentCase(resetData);
+                        // Force reset selection
+                        const newSelection = initSelection(resetData);
+                        setSelectedServices(newSelection);
+                      } catch (e) {
+                        alert("Failed to reset: " + e);
+                      }
+                    }}
+                    className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
+                  >
+                    Reset Results
+                  </button>
+                </div>
               </div>
             )}
-
-            {/* GT Mismatch Warning */}
-            {currentCase.ai_results && Object.keys(currentCase.ai_results).length > 0 &&
-              currentCase.evaluated_ground_truth &&
-              currentCase.evaluation?.ground_truth &&
-              currentCase.evaluated_ground_truth !== currentCase.evaluation.ground_truth && (
-                <div className="mt-1 px-3 py-2 bg-amber-50 border border-amber-200 rounded flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-amber-600" />
-                    <span className="text-xs font-medium text-amber-800">Results outdated</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: currentCase.evaluated_ground_truth } })}
-                      className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
-                    >
-                      Revert GT
-                    </button>
-                    <div className="w-px h-3 bg-amber-300"></div>
-                    <button
-                      onClick={async () => {
-                        if (!confirm("Are you sure you want to delete all evaluation results for this case?")) return;
-                        try {
-                          const res = await fetch(`/api/reset-eval?id=${currentCase.id}`, { method: 'POST' });
-                          if (!res.ok) throw await res.text();
-                          onEvalComplete();
-
-                          const resetData = { ...currentCase, ai_results: {}, evaluated_ground_truth: null };
-                          setCurrentCase(resetData);
-                          // Force reset selection
-                          const newSelection = initSelection(resetData);
-                          setSelectedServices(newSelection);
-                        } catch (e) {
-                          alert("Failed to reset: " + e);
-                        }
-                      }}
-                      className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
-                    >
-                      Reset Results
-                    </button>
-                  </div>
-                </div>
-              )}
-          </div>
         </div>
       </div>
     </>
   );
 }
 
-function ResultsView({ kase, selectedServices, onToggleService }) {
+function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection }) {
   const hasAI = kase.ai_results && Object.keys(kase.ai_results).length > 0;
-  const providers = Object.keys(kase.results).sort();
-  const sortedPerformers = Object.entries(kase.ai_results || {}).sort((a, b) => a[1].score - b[1].score);
+  const providers = Object.keys(kase.results);
+  const sortedPerformers = Object.entries(kase.ai_results || {}).sort((a, b) => b[1].score - a[1].score);
 
-  const scrollToProvider = (p) => {
-    const el = document.getElementById(`panel-${p}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  // Sort state: 'score' (default) or 'name'
+  const [sortBy, setSortBy] = useState('score');
+
+  // Sort providers by score desc (default) or name
+  const sortedProviders = [...providers].sort((a, b) => {
+    if (sortBy === 'score') {
+      const scoreA = kase.ai_results?.[a]?.score ?? -1;
+      const scoreB = kase.ai_results?.[b]?.score ?? -1;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      // If same score, sort by name
+      return getServiceConfig(a).name.localeCompare(getServiceConfig(b).name);
+    } else {
+      return getServiceConfig(a).name.localeCompare(getServiceConfig(b).name);
+    }
+  });
+
+  // Calculate selection state for header checkbox
+  const selectedCount = providers.filter(p => selectedServices?.[p]).length;
+  const selectionState = selectedCount === 0 ? 'none' : selectedCount === providers.length ? 'all' : 'partial';
+
+  // Get default selection to compare
+  const defaultSelection = getDefaultSelection ? getDefaultSelection() : {};
+  const defaultSelectedCount = providers.filter(p => defaultSelection[p]).length;
+  const defaultEqualsAll = defaultSelectedCount === providers.length;
+
+  // 3-state toggle: none → default → all → none
+  // If default equals all, then: none → all → none (skip partial)
+  const handleHeaderCheckboxClick = () => {
+    if (selectionState === 'none') {
+      // From none → apply default
+      if (onSelectDefault) onSelectDefault();
+    } else if (selectionState === 'partial') {
+      // From partial → select all
+      if (onSelectAll) onSelectAll();
+    } else {
+      // From all → deselect all
+      if (onDeselectAll) onDeselectAll();
+    }
   };
 
   const isStale = (service) => {
@@ -630,161 +683,195 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
   };
 
   return (
-    <div className={`${!hasAI ? 'pt-8' : ''}`}>
-      {hasAI && (
-        <div className="sticky top-0 z-40 -mx-8 px-8 pt-6 pb-2 bg-slate-50/90 backdrop-blur-xl shadow-sm transition-all mb-6">
-          <div className="max-w-5xl mx-auto w-full pb-4 px-6">
-            <h2 className="text-sm font-bold mb-8 text-slate-800">Performance Overview</h2>
-            <div className="relative h-1.5 bg-slate-200/50 rounded-full mt-12 mb-16 mx-0">
+    <div>
+      {/* Sticky Header: Perf Distribution + Grid Header */}
+      <div className="sticky top-0 z-20 bg-white -mx-8 px-8">
+        {/* Performance Distribution */}
+        {hasAI && (
+          <div className="pt-4 pb-8">
+            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-4">Perf Distribution</h3>
+            <div className="relative h-1 bg-slate-200 rounded-full mx-3">
               {/* Axis Markers */}
-              <div className="absolute top-1/2 -translate-y-1/2 w-full h-full pointer-events-none">
-                {[0, 25, 50, 75, 100].map((val) => (
-                  <div
-                    key={val}
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 group"
-                    style={{ left: `${val}%` }}
-                  >
-                    <div className="w-1 h-1 bg-slate-300 rounded-full" />
-                    <span className="absolute top-4 left-1/2 -translate-x-1/2 text-[9px] font-medium text-slate-400 font-mono mt-1">
-                      {val}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {sortedPerformers.map(([p, res], idx) => {
+              {[0, 50, 100].map((val) => (
+                <div
+                  key={val}
+                  className="absolute top-1/2"
+                  style={{ left: `${val}%`, transform: `translateX(-50%) translateY(-50%)` }}
+                >
+                  <span className="absolute top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono text-slate-400">
+                    {val}
+                  </span>
+                </div>
+              ))}
+              {/* Score Dots with Tooltips */}
+              {sortedPerformers.map(([p, res]) => {
                 const score = res.score * 100;
                 const config = getServiceConfig(p);
-
-                // 4-cycle positioning to handle overlaps
-                const position = idx % 4;
-                let labelClass = '';
-                let tickClass = '';
-
-                switch (position) {
-                  case 0: // Top Near
-                    labelClass = '-top-7 mb-2';
-                    tickClass = 'absolute left-1/2 -translate-x-1/2 w-px h-3 bg-slate-300 -bottom-3';
-                    break;
-                  case 1: // Bottom Near
-                    labelClass = '-bottom-7 mt-2';
-                    tickClass = 'absolute left-1/2 -translate-x-1/2 w-px h-3 bg-slate-300 -top-3';
-                    break;
-                  case 2: // Top Far
-                    labelClass = '-top-12 mb-2';
-                    tickClass = 'absolute left-1/2 -translate-x-1/2 w-px h-8 bg-slate-300 -bottom-8';
-                    break;
-                  case 3: // Bottom Far
-                    labelClass = '-bottom-12 mt-2';
-                    tickClass = 'absolute left-1/2 -translate-x-1/2 w-px h-8 bg-slate-300 -top-8';
-                    break;
-                }
-
+                // Viewport-aware tooltip: left edge -> right align, right edge -> left align
+                const isNearLeft = score < 15;
+                const isNearRight = score > 85;
+                let tooltipPosition = 'left-1/2 -translate-x-1/2'; // default: center
+                if (isNearLeft) tooltipPosition = 'left-0';
+                else if (isNearRight) tooltipPosition = 'right-0';
                 return (
                   <div
                     key={p}
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 group cursor-pointer hover:z-50"
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer group"
                     style={{ left: `${score}%` }}
-                    onClick={() => scrollToProvider(p)}
                   >
-                    <div className={`w-3 h-3 rounded-full border-2 border-white ${config.color.dot} shadow-sm relative z-30 transition-transform group-hover:scale-125`} />
-                    <div
-                      className={`absolute left-1/2 -translate-x-1/2 px-2 py-1 bg-white/80 backdrop-blur-sm shadow-sm border border-white/50 rounded text-[10px] font-bold whitespace-nowrap z-20 flex flex-col items-center transition-all group-hover:scale-110 group-hover:bg-white
-                        ${labelClass}
-                      `}
-                    >
-                      <span className="text-slate-700 font-bold uppercase tracking-wider text-[10px]">{config.name}</span>
-                      <div className={tickClass} />
+                    <div className={`w-3 h-3 rounded-full ${config.color.dot} border-2 border-white shadow-sm`} />
+                    <div className={`absolute bottom-full ${tooltipPosition} mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}>
+                      {config.name}: {Math.round(score)}
                     </div>
                   </div>
                 );
               })}
             </div>
           </div>
+        )}
+
+        {/* Grid Header - border extends to container edges */}
+        <div className="-mx-8 px-8 border-b border-slate-200">
+          <div className="grid grid-cols-[32px_160px_1fr_240px] gap-0 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 items-center">
+            {/* Header checkbox - same style as row checkboxes */}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleHeaderCheckboxClick();
+                }}
+                className="w-5 h-5 rounded-full flex items-center justify-center transition-all shrink-0 bg-slate-400 border-2 border-white shadow-sm cursor-pointer"
+              >
+                {selectionState === 'all' && <Check size={12} className="text-white" strokeWidth={4} />}
+                {selectionState === 'partial' && <Minus size={12} className="text-white" strokeWidth={4} />}
+              </button>
+            </div>
+            {/* Service / Score - clickable text to sort */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setSortBy('name')}
+                className={`hover:text-slate-600 cursor-pointer ${sortBy === 'name' ? 'text-slate-700' : ''}`}
+              >
+                SERVICE
+              </button>
+              <span>/</span>
+              <button
+                type="button"
+                onClick={() => setSortBy('score')}
+                className={`hover:text-slate-600 cursor-pointer ${sortBy === 'score' ? 'text-slate-700' : ''}`}
+              >
+                SCORE
+              </button>
+            </div>
+            <div>TRANSCRIPT</div>
+            <div>Analysis</div>
+          </div>
         </div>
-      )}
+      </div>
 
-      <div className="max-w-5xl mx-auto space-y-4">
-        {providers.map((p) => {
-          const aiRes = kase.ai_results?.[p];
-          const score = aiRes ? Math.round(aiRes.score * 100) : null;
-          const config = getServiceConfig(p);
-          const { color, name } = config;
-          const isSelected = !!selectedServices?.[p];
-          const stale = isStale(p);
+      {/* Grid Rows */}
+      {sortedProviders.map((p) => {
+        const aiRes = kase.ai_results?.[p];
+        const score = aiRes ? Math.round(aiRes.score * 100) : null;
+        const config = getServiceConfig(p);
+        const { color, name } = config;
+        const isSelected = !!selectedServices?.[p];
+        const stale = isStale(p);
 
-          return (
+        // Determine score color
+        let scoreColorClass = 'text-red-500';
+        if (score !== null) {
+          if (score >= 90) scoreColorClass = 'text-green-600';
+          else if (score >= 70) scoreColorClass = 'text-yellow-600';
+          else if (score >= 50) scoreColorClass = 'text-orange-500';
+        }
+
+        return (
+          <div
+            id={`panel-${p}`}
+            key={p}
+            className={`grid grid-cols-[32px_160px_1fr_240px] gap-0 border-b border-slate-100 last:border-b-0 py-3 transition-colors items-start
+              ${isSelected ? 'bg-slate-50' : 'hover:bg-slate-50/50'}
+            `}
+          >
+            {/* Column 0: Round checkbox - always solid colored, white check when selected */}
             <div
-              id={`panel-${p}`}
-              key={p}
-              className={`scroll-mt-96 bg-white border rounded-lg overflow-hidden shadow-sm flex flex-col md:flex-row transition-colors
-                ${isSelected ? color.border : 'border-slate-200'}
-              `}
+              className="flex justify-center cursor-pointer"
+              onClick={() => onToggleService && onToggleService(p)}
             >
-              {/* Left Column: Header + Transcript */}
-              <div className="flex-1 flex flex-col min-w-0 border-r border-slate-100">
-                <div className={`px-4 py-3 border-b flex justify-between items-center select-none cursor-pointer transition-colors
-                  ${isSelected ? `${color.ring} ${color.border}` : 'bg-slate-50 border-slate-200'}
-                `}
-                  onClick={() => onToggleService && onToggleService(p)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`relative flex items-center justify-center w-5 h-5 rounded border transition-all shadow-sm
-                       ${isSelected ? `${color.dot} border-transparent text-white` : 'bg-white border-slate-300 text-transparent group-hover:border-slate-400'}
-                     `}>
-                      <Check size={12} strokeWidth={4} className={`transform transition-transform duration-200 ${isSelected ? 'scale-100' : 'scale-0'}`} />
-                    </div>
-                    <h3 className={`text-sm font-bold uppercase tracking-wide ${isSelected ? color.text : 'text-slate-500'}`}>{name}</h3>
-                    {stale && (
-                      <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-bold uppercase tracking-wider ml-2 animate-pulse">
-                        <AlertTriangle size={10} /> Outdated
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigator.clipboard.writeText(kase.results[p]);
-                    }}
-                    title="Copy original transcript"
-                  >
-                    <Copy size={14} />
-                  </button>
-                </div>
-                <div className="p-4 text-sm leading-relaxed text-slate-700 min-h-[100px] flex-1">
-                  {renderDiff(kase.results[p], aiRes?.revised_transcript)}
-                </div>
-              </div>
-
-              {/* Right Column: Eval or Placeholder */}
-              <div className="w-full md:w-80 shrink-0 bg-slate-50/50 flex flex-col">
-                {aiRes ? (
-                  <div className="p-4 flex flex-col h-full">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-3xl font-bold">{score}<span className="text-sm text-slate-400 font-normal">/100</span></div>
-                    </div>
-                    <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Analysis</h4>
-                    <ul className="space-y-1.5 flex-1">
-                      {aiRes.summary?.map((point, i) => (
-                        <li key={i} className="text-xs text-slate-600 flex gap-2 leading-snug">
-                          <AlertCircle size={12} className="text-slate-400 shrink-0 mt-0.5" />
-                          <span>{point}</span>
-                        </li>
-                      ))}
-                      {!aiRes.summary && <li className="text-xs text-slate-400 italic">No summary provided</li>}
-                    </ul>
-                  </div>
-                ) : (
-                  <div className="p-4 flex flex-col items-center justify-center h-full text-slate-400">
-                    <span className="text-xs italic">No AI Eval Result</span>
-                  </div>
-                )}
+              <div
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all shrink-0 ${color.dot} border-2 border-white shadow-sm`}
+                style={{ marginTop: '0px' }}
+              >
+                {isSelected && <Check size={12} className="text-white" strokeWidth={4} />}
               </div>
             </div>
-          );
-        })}
-      </div>
+
+            {/* Column 1: Service / Score - only title is clickable */}
+            <div className="flex flex-col select-none">
+              {/* Service name row - clickable */}
+              <div
+                className="flex items-start gap-1.5 cursor-pointer"
+                onClick={() => onToggleService && onToggleService(p)}
+              >
+                <span
+                  className="text-xs font-bold uppercase tracking-wide text-slate-700 hover:text-slate-900"
+                  style={{ lineHeight: '20px' }}
+                >
+                  {name}
+                </span>
+                {stale && (
+                  <AlertTriangle
+                    size={10}
+                    className="text-amber-500 animate-pulse shrink-0"
+                    style={{ marginTop: '5px' }}
+                  />
+                )}
+              </div>
+              {/* Score - not clickable */}
+              <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
+                {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
+              </div>
+            </div>
+
+            {/* Column 2: Transcript Diff - 20px line height to match */}
+            <div
+              className="text-sm text-slate-700 relative group pr-8"
+              style={{ lineHeight: '20px' }}
+            >
+              {renderDiff(kase.results[p], aiRes?.revised_transcript)}
+              <button
+                className="absolute top-0 right-2 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all opacity-0 group-hover:opacity-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(kase.results[p]);
+                }}
+                title="Copy original transcript"
+              >
+                <Copy size={14} />
+              </button>
+            </div>
+
+            {/* Column 3: Analysis */}
+            <div className="text-xs text-slate-400">
+              {aiRes?.summary ? (
+                <ul className="space-y-1.5">
+                  {aiRes.summary.map((point, i) => (
+                    <li key={i} className="leading-snug">
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-slate-300 text-lg">—</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
