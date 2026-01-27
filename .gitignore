@@ -1,8 +1,8 @@
 transcripts_and_audios/
 .env
-server
-processor
-qwen-processor
+/server
+/processor
+/qwen-processor
 server.log
 node_modules/
 .DS_Store
