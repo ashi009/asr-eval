@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useParams, useNavigate, Navigate } from 'react-router-dom';
-import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2, Copy } from 'lucide-react';
+import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2, Copy, AlertTriangle } from 'lucide-react';
 import { getServiceConfig } from './config';
 import { smartDiff } from './diffUtils';
 
@@ -277,6 +277,12 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
         if (!res.ok) throw new Error("Failed to load case");
         const data = await res.json();
         if (mounted.current && idRef.current === id) {
+          // If backend doesn't provide specific evaluated_ground_truth,
+          // assume the loaded GT is the baseline for existing results.
+          if (!data.evaluated_ground_truth && data.evaluation?.ground_truth) {
+            data.evaluated_ground_truth = data.evaluation.ground_truth;
+          }
+
           setCurrentCase(data);
 
           // Initialize selected services based on config and available results
@@ -284,8 +290,10 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
           if (data && data.results) {
             Object.keys(data.results).forEach(service => {
               const config = getServiceConfig(service);
-              // Default to config.enabled, fallback to true if undefined
-              initialSelection[service] = config.enabled !== false;
+              // Auto-select if enabled AND not already evaluated
+              const isEnabled = config.enabled !== false;
+              const hasResult = data.ai_results && data.ai_results[service];
+              initialSelection[service] = isEnabled && !hasResult;
             });
           }
           setSelectedServices(initialSelection);
@@ -380,7 +388,10 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
 
       // Check against current ID using Ref to avoid stale closure
       if (idRef.current === evalId) {
-        updateCaseLocal({ ai_results: aiResults });
+        updateCaseLocal({
+          ai_results: aiResults,
+          evaluated_ground_truth: gt // We know this is the new baseline
+        });
       }
       if (onEvalComplete) onEvalComplete();
     } catch (e) {
@@ -403,6 +414,8 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
+
+
         <ResultsView
           kase={currentCase}
           selectedServices={selectedServices}
@@ -490,9 +503,47 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
                 {currentCase.evaluation?.ground_truth || "No ground truth provided"}
               </div>
             )}
+
+            {/* GT Mismatch Warning */}
+            {currentCase.ai_results && Object.keys(currentCase.ai_results).length > 0 &&
+              currentCase.evaluated_ground_truth &&
+              currentCase.evaluation?.ground_truth &&
+              currentCase.evaluated_ground_truth !== currentCase.evaluation.ground_truth && (
+                <div className="mt-1 px-3 py-2 bg-amber-50 border border-amber-200 rounded flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={14} className="text-amber-600" />
+                    <span className="text-xs font-medium text-amber-800">Results outdated</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: currentCase.evaluated_ground_truth } })}
+                      className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
+                    >
+                      Revert GT
+                    </button>
+                    <div className="w-px h-3 bg-amber-300"></div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Are you sure you want to delete all evaluation results for this case?")) return;
+                        try {
+                          const res = await fetch(`/api/reset-eval?id=${currentCase.id}`, { method: 'POST' });
+                          if (!res.ok) throw await res.text();
+                          onEvalComplete();
+                          setCurrentCase(prev => ({ ...prev, ai_results: {}, evaluated_ground_truth: null }));
+                        } catch (e) {
+                          alert("Failed to reset: " + e);
+                        }
+                      }}
+                      className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
+                    >
+                      Reset Results
+                    </button>
+                  </div>
+                </div>
+              )}
           </div>
         </div>
-      </div>
+      </div >
     </>
   );
 }

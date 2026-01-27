@@ -17,16 +17,22 @@ import (
 )
 
 type FileData struct {
-	ID         string                    `json:"id"`
-	Filename   string                    `json:"filename"`
-	Results    map[string]string         `json:"results"`
-	Evaluation Evaluation                `json:"evaluation"`
-	AIResults  map[string]llm.EvalResult `json:"ai_results"`
+	ID                   string                    `json:"id"`
+	Filename             string                    `json:"filename"`
+	Results              map[string]string         `json:"results"`
+	Evaluation           Evaluation                `json:"evaluation"`
+	AIResults            map[string]llm.EvalResult `json:"ai_results"`
+	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
 }
 
 type Evaluation struct {
 	GroundTruth string `json:"ground_truth"`
 	Comment     string `json:"comment"`
+}
+
+type AIResultFile struct {
+	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
+	Results              map[string]llm.EvalResult `json:"results"`
 }
 
 var datasetDir string
@@ -58,6 +64,7 @@ func main() {
 	http.HandleFunc("/api/evaluate", evaluateHandler)
 	http.HandleFunc("/api/evaluate-llm", evaluateLLMHandler)
 	http.HandleFunc("/api/case", getCaseHandler)
+	http.HandleFunc("/api/reset-eval", resetEvalHandler)
 
 	port := 8080
 	fmt.Printf("Attempting to listen on 127.0.0.1:%d...\n", port)
@@ -105,17 +112,27 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 			// Calculate best performer
 			content, err := ioutil.ReadFile(resultPath)
 			if err == nil {
-				var results map[string]llm.EvalResult
-				if err := json.Unmarshal(content, &results); err == nil {
+				var aiResults map[string]llm.EvalResult
+
+				// Try new format first
+				var fileData AIResultFile
+				if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
+					aiResults = fileData.Results
+				} else {
+					// Fallback to old format (map)
+					json.Unmarshal(content, &aiResults)
+				}
+
+				if aiResults != nil {
 					var maxScore float64 = -1.0
 					// First pass: find max score
-					for _, res := range results {
+					for _, res := range aiResults {
 						if res.Score > maxScore {
 							maxScore = res.Score
 						}
 					}
 					// Second pass: collect all matching max score
-					for name, res := range results {
+					for name, res := range aiResults {
 						if res.Score >= maxScore && maxScore >= 0 {
 							bestPerformers = append(bestPerformers, name)
 						}
@@ -162,7 +179,16 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 				json.Unmarshal(content, &data.Evaluation)
 			} else if strings.HasSuffix(name, ".result.json") {
 				content, _ := ioutil.ReadFile(path)
-				json.Unmarshal(content, &data.AIResults)
+
+				// Try new format
+				var fileData AIResultFile
+				if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
+					data.AIResults = fileData.Results
+					data.EvaluatedGroundTruth = fileData.EvaluatedGroundTruth
+				} else {
+					// Fallback
+					json.Unmarshal(content, &data.AIResults)
+				}
 			} else if strings.HasSuffix(name, ".flac") {
 				// Audio file, ignore
 			} else {
@@ -206,6 +232,25 @@ func evaluateHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func resetEvalHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	filename := filepath.Join(datasetDir, id+".result.json")
+	if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -226,7 +271,11 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-Save Ground Truth to [ID].eval.json before running eval
 	evalFilename := filepath.Join(datasetDir, req.ID+".eval.json")
-	evalData := Evaluation{GroundTruth: req.GroundTruth, Comment: ""}
+	var evalData Evaluation
+	if content, err := ioutil.ReadFile(evalFilename); err == nil {
+		json.Unmarshal(content, &evalData)
+	}
+	evalData.GroundTruth = req.GroundTruth // Update GT, preserve Comment
 	evalBytes, _ := json.MarshalIndent(evalData, "", "  ")
 	ioutil.WriteFile(evalFilename, evalBytes, 0644)
 
@@ -246,21 +295,44 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 		results = make(map[string]llm.EvalResult)
 	}
 
-	// Merge existing results (taking precedence if not overwritten, though req.Results shouldn't overlap ideally)
-	// But logically, if we just ran eval on X, we want X. If we passed Y in existing, we want Y.
-	// So we merge: start with New Results, add Existing if not present?
-	// Or better: Start with Existing, Overwrite with New.
+	// Merge existing results (taking precedence if not overwritten)
+	// 1. Start with what's on disk (safest source of truth)
 	finalResults := make(map[string]llm.EvalResult)
+	var evaluatedGroundTruth string
+
+	filename := filepath.Join(datasetDir, req.ID+".result.json")
+	if fileBytes, err := ioutil.ReadFile(filename); err == nil {
+		// Try new format
+		var fileData AIResultFile
+		if err := json.Unmarshal(fileBytes, &fileData); err == nil && fileData.Results != nil {
+			finalResults = fileData.Results
+			evaluatedGroundTruth = fileData.EvaluatedGroundTruth
+		} else {
+			// Old format
+			json.Unmarshal(fileBytes, &finalResults)
+		}
+	}
+
+	// 2. Merge frontend provided existing results (optional, but respects request payload)
 	for k, v := range req.ExistingResults {
 		finalResults[k] = v
 	}
+
+	// 3. Overwrite with new evaluations
 	for k, v := range results {
 		finalResults[k] = v
 	}
 
-	// Persist Results
-	filename := filepath.Join(datasetDir, req.ID+".result.json")
-	data, _ := json.MarshalIndent(finalResults, "", "  ")
+	// Update processed GT to current one
+	evaluatedGroundTruth = req.GroundTruth
+
+	// Persist Results in new format
+	fileData := AIResultFile{
+		EvaluatedGroundTruth: evaluatedGroundTruth,
+		Results:              finalResults,
+	}
+
+	data, _ := json.MarshalIndent(fileData, "", "  ")
 	ioutil.WriteFile(filename, data, 0644)
 
 	w.Header().Set("Content-Type", "application/json")
