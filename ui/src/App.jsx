@@ -666,7 +666,12 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
   const handleHeaderCheckboxClick = () => {
     if (selectionState === 'none') {
       // From none → apply default
-      if (onSelectDefault) onSelectDefault();
+      // IF default is empty, skip to all
+      if (defaultSelectedCount > 0 && onSelectDefault) {
+        onSelectDefault();
+      } else if (onSelectAll) {
+        onSelectAll();
+      }
     } else if (selectionState === 'partial') {
       // From partial → select all
       if (onSelectAll) onSelectAll();
