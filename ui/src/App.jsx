@@ -75,13 +75,66 @@ function Layout() {
   const pendingCases = filteredCases.filter(c => !c.has_ai);
   const doneCases = filteredCases.filter(c => c.has_ai);
 
+  // Sidebar State
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isOverlay, setIsOverlay] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const overlay = window.innerWidth < 1280;
+      setIsOverlay(overlay);
+
+      // Auto-retract only when switching to overlay mode initially?
+      // For now, keeping simple logic: if overlay, default to closed unless manually toggled?
+      // Actually, better UX: if window shrinks to overlay, close it.
+      if (overlay) {
+        setSidebarOpen(false);
+      } else {
+        setSidebarOpen(true);
+      }
+    };
+
+    // Initial check
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+
   return (
-    <div className="flex h-screen bg-background-light dark:bg-background-dark font-display text-slate-900 overflow-hidden">
-      <aside className="w-80 border-r border-slate-200 bg-slate-50 flex flex-col shrink-0">
-        <div className="p-4 border-b border-slate-200 bg-white">
-          <div className="flex items-center gap-2 mb-4">
-            <AudioLines className="text-primary" />
-            <h1 className="font-bold">ASR Eval Pro</h1>
+    <div className="flex h-screen bg-background-light dark:bg-background-dark font-display text-slate-900 overflow-hidden relative">
+      {/* Backdrop for Overlay Mode */}
+      {isOverlay && sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[49] transition-opacity"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`border-r border-slate-200 bg-slate-50 flex flex-col shrink-0 transition-all duration-300 ease-in-out z-[50]
+          ${isOverlay
+            ? `fixed inset-y-0 left-0 h-full shadow-2xl ${sidebarOpen ? 'translate-x-0 w-80' : '-translate-x-full w-80'}`
+            : `relative ${sidebarOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full opacity-0 overflow-hidden'}`
+          }
+        `}
+      >
+        <div className="p-4 border-b border-slate-200 bg-white w-full">
+          <div className="flex items-center gap-2 mb-4 justify-between">
+            <div className="flex items-center gap-2">
+              <AudioLines className="text-primary" />
+              <h1 className="font-bold">ASR Eval Pro</h1>
+            </div>
+            <button onClick={toggleSidebar} className="p-1 hover:bg-slate-100 rounded lg:hidden">
+              <span className="sr-only">Close sidebar</span>
+              <div className="w-4 h-4 flex flex-col justify-between">
+                <span className="w-full h-0.5 bg-slate-400 block origin-center transform rotate-45 translate-y-[6px]"></span>
+                <span className="w-full h-0.5 bg-slate-400 block opacity-0"></span>
+                <span className="w-full h-0.5 bg-slate-400 block origin-center transform -rotate-45 -translate-y-[6px]"></span>
+              </div>
+            </button>
           </div>
           <div className="relative">
             <Search className="absolute left-2 top-2 text-slate-400 w-4 h-4" />
@@ -93,7 +146,7 @@ function Layout() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 space-y-6 w-full">
           {pendingCases.length > 0 && (
             <div>
               <h3 className="text-xs font-bold text-slate-500 uppercase px-2 mb-2">Pending</h3>
@@ -161,6 +214,17 @@ function Layout() {
         </div>
       </aside>
 
+      {/* Sidebar Toggle Button (Visible when sidebar is closed) */}
+      {!sidebarOpen && (
+        <button
+          onClick={toggleSidebar}
+          className="absolute left-4 top-4 z-50 p-2 bg-white shadow-md border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+          title="Toggle Sidebar"
+        >
+          <AudioLines className="text-primary w-5 h-5" />
+        </button>
+      )}
+
       <main className="flex-1 flex flex-col relative overflow-hidden bg-white">
         <Routes>
           <Route path="/" element={
@@ -189,6 +253,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
   const [currentCase, setCurrentCase] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedServices, setSelectedServices] = useState({});
+  const [isInputExpanded, setIsInputExpanded] = useState(true);
 
   // Keep ref in sync
   const mounted = useRef(true);
@@ -224,6 +289,13 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
             });
           }
           setSelectedServices(initialSelection);
+
+          // Auto-collapse if ground truth exists
+          if (data.evaluation?.ground_truth?.trim()) {
+            setIsInputExpanded(false);
+          } else {
+            setIsInputExpanded(true);
+          }
         }
       } catch (e) {
         console.error(e);
@@ -327,42 +399,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
 
   return (
     <>
-      {/* Player Header */}
-      <div className="bg-white/95 backdrop-blur border-b border-slate-200 py-4 shrink-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 flex items-center gap-4">
-          <button onClick={togglePlay} className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center hover:opacity-90">
-            {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-          </button>
-          <div className="flex-1">
-            <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
-              <span className="font-bold text-slate-700">{currentCase.id}</span>
-              <span className="font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
-            </div>
-            <div
-              className="relative h-2 bg-slate-100 rounded-full cursor-pointer group"
-              onClick={e => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pct = (e.clientX - rect.left) / rect.width;
-                if (audioRef.current) {
-                  audioRef.current.currentTime = pct * duration;
-                  if (audioRef.current.paused) {
-                    audioRef.current.play();
-                    setIsPlaying(true);
-                  }
-                }
-              }}
-            >
-              <div className="absolute top-0 left-0 h-full bg-primary rounded-full" style={{ width: `${(currentTime / duration) * 100}%` }} />
-            </div>
-          </div>
-          <audio
-            ref={audioRef}
-            onTimeUpdate={e => setCurrentTime(e.target.currentTime)}
-            onLoadedMetadata={e => setDuration(e.target.duration)}
-            onEnded={() => setIsPlaying(false)}
-          />
-        </div>
-      </div>
+      {/* Player Header Removed (Moved to Footer) */}
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-8 pb-8 space-y-8">
@@ -374,27 +411,86 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
       </div>
 
       {/* Ground Truth Footer */}
-      <div className="bg-white border-t border-slate-200 p-6 shrink-0 z-10">
+      <div className="bg-white border-t border-slate-200 p-4 shrink-0 z-10 transition-all duration-300">
         <div className="max-w-5xl mx-auto">
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-sm font-bold flex items-center gap-2">
-              <Check className="w-4 h-4 text-slate-400" /> Ground Truth
-            </label>
-            <button
-              onClick={runEval}
-              disabled={isProcessingThisCase}
-              className="bg-primary hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-1.5 rounded text-sm font-bold flex items-center gap-2 transition-colors"
-            >
-              {isProcessingThisCase ? 'Running...' : <><Play size={14} /> Run AI Eval ({Object.values(selectedServices).filter(Boolean).length})</>}
+          {/* Playback Controls */}
+          <div className="flex items-center gap-4 mb-4 border-b border-slate-100 pb-3">
+            <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center hover:opacity-90 shrink-0">
+              {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
             </button>
+            <div className="flex-1">
+              <div className="flex justify-between text-[10px] font-medium text-slate-500 mb-1">
+                <span className="font-bold text-slate-700">Playback</span>
+                <span className="font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
+              </div>
+              <div
+                className="relative h-1.5 bg-slate-100 rounded-full cursor-pointer group"
+                onClick={e => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const pct = (e.clientX - rect.left) / rect.width;
+                  if (audioRef.current) {
+                    audioRef.current.currentTime = pct * duration;
+                    if (audioRef.current.paused) {
+                      audioRef.current.play();
+                      setIsPlaying(true);
+                    }
+                  }
+                }}
+              >
+                <div className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all" style={{ width: `${(currentTime / duration) * 100}%` }} />
+              </div>
+            </div>
+            <audio
+              ref={audioRef}
+              onTimeUpdate={e => setCurrentTime(e.target.currentTime)}
+              onLoadedMetadata={e => setDuration(e.target.duration)}
+              onEnded={() => setIsPlaying(false)}
+            />
           </div>
-          <textarea
-            className="w-full h-48 border border-slate-200 rounded p-3 text-sm font-mono focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-slate-50 disabled:text-slate-500"
-            placeholder="Enter ground truth..."
-            value={currentCase.evaluation?.ground_truth || ""}
-            onChange={e => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: e.target.value } })}
-            disabled={isProcessingThisCase}
-          />
+
+          {/* Ground Truth Section */}
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <div
+                className="flex items-center gap-2 cursor-pointer select-none"
+                onClick={() => setIsInputExpanded(!isInputExpanded)}
+              >
+                <label className="text-sm font-bold flex items-center gap-2 cursor-pointer">
+                  <Check className={`w-4 h-4 transition-colors ${currentCase.evaluation?.ground_truth ? 'text-green-500' : 'text-slate-400'}`} />
+                  Ground Truth
+                </label>
+                <span className="text-xs text-slate-400 hover:text-primary transition-colors">
+                  {isInputExpanded ? '(Click to collapse)' : '(Click to expand)'}
+                </span>
+              </div>
+              <button
+                onClick={runEval}
+                disabled={isProcessingThisCase}
+                className="bg-primary hover:bg-blue-600 disabled:opacity-50 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-colors ml-auto"
+              >
+                {isProcessingThisCase ? 'Running...' : <><Play size={12} /> Run AI Eval ({Object.values(selectedServices).filter(Boolean).length})</>}
+              </button>
+            </div>
+
+            {isInputExpanded ? (
+              <textarea
+                className="w-full h-32 border border-slate-200 rounded p-3 text-sm font-mono focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-slate-50 disabled:text-slate-500 animate-in fade-in zoom-in-95 duration-200"
+                placeholder="Enter ground truth..."
+                value={currentCase.evaluation?.ground_truth || ""}
+                onChange={e => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: e.target.value } })}
+                disabled={isProcessingThisCase}
+                autoFocus
+              />
+            ) : (
+              <div
+                className="w-full bg-slate-50 border border-slate-200 rounded p-2 text-sm text-slate-600 font-mono italic cursor-pointer hover:border-slate-300 hover:bg-slate-100 transition-colors truncate"
+                onClick={() => setIsInputExpanded(true)}
+                title={currentCase.evaluation?.ground_truth}
+              >
+                {currentCase.evaluation?.ground_truth || "No ground truth provided"}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -498,35 +594,40 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
             <div
               id={`panel-${p}`}
               key={p}
-              className={`bg-white border rounded-lg overflow-hidden shadow-sm scroll-mt-96 transition-colors
+              className={`scroll-mt-96 bg-white border rounded-lg overflow-hidden shadow-sm flex flex-col md:flex-row transition-colors
                 ${isSelected ? color.border : 'border-slate-200'}
               `}
             >
-              <div className={`px-4 py-3 bg-opacity-30 border-b flex justify-between items-center select-none cursor-pointer transition-colors
-                ${isSelected ? `${color.ring} ${color.border}` : 'bg-slate-50 border-slate-200'}
-              `}
-                onClick={() => onToggleService && onToggleService(p)}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`relative flex items-center justify-center w-5 h-5 rounded border transition-all shadow-sm
-                     ${isSelected ? `${color.dot} border-transparent text-white` : 'bg-white border-slate-300 text-transparent group-hover:border-slate-400'}
-                   `}>
-                    <Check size={12} strokeWidth={4} className={`transform transition-transform duration-200 ${isSelected ? 'scale-100' : 'scale-0'}`} />
+              {/* Left Column: Header + Transcript */}
+              <div className="flex-1 flex flex-col min-w-0 border-r border-slate-100">
+                <div className={`px-4 py-3 border-b flex justify-between items-center select-none cursor-pointer transition-colors
+                  ${isSelected ? `${color.ring} ${color.border}` : 'bg-slate-50 border-slate-200'}
+                `}
+                  onClick={() => onToggleService && onToggleService(p)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`relative flex items-center justify-center w-5 h-5 rounded border transition-all shadow-sm
+                       ${isSelected ? `${color.dot} border-transparent text-white` : 'bg-white border-slate-300 text-transparent group-hover:border-slate-400'}
+                     `}>
+                      <Check size={12} strokeWidth={4} className={`transform transition-transform duration-200 ${isSelected ? 'scale-100' : 'scale-0'}`} />
+                    </div>
+                    <h3 className={`text-sm font-bold uppercase tracking-wide ${isSelected ? color.text : 'text-slate-500'}`}>{name}</h3>
                   </div>
-                  <h3 className={`text-sm font-bold uppercase tracking-wide ${isSelected ? color.text : 'text-slate-500'}`}>{name}</h3>
                 </div>
-              </div>
-              <div className={`flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x ${isSelected ? 'divide-slate-100' : 'divide-slate-100 opacity-75'}`}>
-                <div className="flex-1 p-4 text-sm leading-relaxed text-slate-700 h-full min-h-[100px]">
+                <div className="p-4 text-sm leading-relaxed text-slate-700 min-h-[100px] flex-1">
                   {renderDiff(kase.results[p], aiRes?.revised_transcript)}
                 </div>
+              </div>
+
+              {/* Right Column: Eval or Placeholder */}
+              <div className="w-full md:w-80 shrink-0 bg-slate-50/50 flex flex-col">
                 {aiRes ? (
-                  <div className="w-80 p-4 shrink-0 bg-slate-50/50 flex flex-col">
+                  <div className="p-4 flex flex-col h-full">
                     <div className="flex items-center justify-between mb-2">
                       <div className="text-3xl font-bold">{score}<span className="text-sm text-slate-400 font-normal">/100</span></div>
                     </div>
                     <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-2">Analysis</h4>
-                    <ul className="space-y-1.5 mb-4">
+                    <ul className="space-y-1.5 flex-1">
                       {aiRes.summary?.map((point, i) => (
                         <li key={i} className="text-xs text-slate-600 flex gap-2 leading-snug">
                           <AlertCircle size={12} className="text-slate-400 shrink-0 mt-0.5" />
@@ -537,7 +638,7 @@ function ResultsView({ kase, selectedServices, onToggleService }) {
                     </ul>
                   </div>
                 ) : (
-                  <div className="w-80 p-4 shrink-0 bg-slate-50/50 flex flex-col items-center justify-center text-slate-400">
+                  <div className="p-4 flex flex-col items-center justify-center h-full text-slate-400">
                     <span className="text-xs italic">No AI Eval Result</span>
                   </div>
                 )}
