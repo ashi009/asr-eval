@@ -22,7 +22,6 @@ The project consists of a Go backend and a React (Vite) frontend.
 1.  **Listing Cases**: Scans the dataset directory for `.flac` files and corresponding results.
     -   **Filtering**: The server STRICTLY filters results to only show those matching the active LLM model.
 2.  **Evaluation**:
-    -   **Human**: User inputs ground truth and comments. Saved to `[ID].eval.json`.
     -   **LLM**: User triggers LLM eval. Saved to `[ID].[MODEL].result.json` (e.g., `id.gemini-2.5-flash.result.json`).
 3.  **Reset**:
     -   Users can reset (delete) results for the *current* model via the UI.

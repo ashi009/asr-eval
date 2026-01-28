@@ -66,7 +66,6 @@ func main() {
 	http.Handle("/audio/", http.StripPrefix("/audio/", audioFs))
 
 	http.HandleFunc("/api/cases", listFilesHandler)
-	http.HandleFunc("/api/evaluate", evaluateHandler)
 	http.HandleFunc("/api/evaluate-llm", evaluateLLMHandler)
 	http.HandleFunc("/api/case", getCaseHandler)
 	http.HandleFunc("/api/reset-eval", resetEvalHandler)
@@ -209,13 +208,9 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(name, id) {
 			continue
 		}
-
 		path := filepath.Join(datasetDir, name)
 
-		if strings.HasSuffix(name, ".eval.json") {
-			content, _ := ioutil.ReadFile(path)
-			json.Unmarshal(content, &data.Evaluation)
-		} else if name == id+targetSuffix {
+		if name == id+targetSuffix {
 			// STRICT filtering: Only read results for the ACTIVE model
 			content, _ := ioutil.ReadFile(path)
 
@@ -260,29 +255,6 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(data)
-}
-
-func evaluateHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-		ID         string     `json:"id"`
-		Evaluation Evaluation `json:"evaluation"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	filename := filepath.Join(datasetDir, req.ID+".eval.json")
-	data, _ := json.MarshalIndent(req.Evaluation, "", "  ")
-	ioutil.WriteFile(filename, data, 0644)
-
-	w.WriteHeader(http.StatusOK)
 }
 
 func resetEvalHandler(w http.ResponseWriter, r *http.Request) {
