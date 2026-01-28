@@ -1,11 +1,14 @@
 package llm
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func formatTranscripts(transcripts map[string]string) string {
-	var s string
-	for k, v := range transcripts {
-		s += fmt.Sprintf("- [%s]: %s\n", k, v)
+	var sb strings.Builder
+	for name, text := range transcripts {
+		sb.WriteString(fmt.Sprintf("%s: \"%s\"\n", name, text))
 	}
-	return s
+	return sb.String()
 }
