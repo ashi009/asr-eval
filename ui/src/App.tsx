@@ -743,6 +743,9 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
     return kase.evaluated_transcripts[service] !== kase.results[service];
   };
 
+  // State for stale data comparison mode: 'eval' (Origin->Rev) | 'drift' (Origin->New) | 'gap' (New->Rev)
+  const [diffModes, setDiffModes] = useState<Record<string, 'eval' | 'drift' | 'gap'>>({});
+
   return (
     <div>
       <div className="sticky top-0 z-20 bg-white -mx-8 px-8 flex flex-col">
@@ -844,6 +847,29 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
         const { color, name } = config;
         const isSelected = !!selectedServices?.[p];
         const stale = isStale(p);
+        const mode = diffModes[p] || 'eval';
+
+        // Prepare Diff Texts
+        const origin = kase.evaluated_transcripts?.[p] || "";
+        const current = kase.results[p] || "";
+        const revised = aiRes?.revised_transcript || "";
+
+        let diffLeft = current;
+        let diffRight = revised;
+
+        if (stale) {
+          if (mode === 'drift') {
+            diffLeft = origin;
+            diffRight = current;
+          } else if (mode === 'gap') {
+            diffLeft = current;
+            diffRight = revised;
+          } else {
+            // mode === 'eval'
+            diffLeft = origin;
+            diffRight = revised;
+          }
+        }
 
         // Determine score color
         let scoreColorClass = 'text-red-500';
@@ -887,18 +913,23 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
                 >
                   {name}
                 </span>
-                {stale && (
-                  <AlertTriangle
-                    size={10}
-                    className="text-amber-500 animate-pulse shrink-0"
-                    style={{ marginTop: '5px' }}
-                  />
-                )}
               </div>
               {/* Score - not clickable */}
-              <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
-                {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
-              </div>
+              {stale ? (
+                <div className="mt-1 flex items-center gap-2" title="Transcript changed since evaluation">
+                  <div className="text-3xl font-bold text-slate-300 line-through opacity-50">
+                    {score}
+                  </div>
+                  <div className="flex items-center gap-1 text-amber-600 font-bold text-xs bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase whitespace-nowrap">
+                    <AlertTriangle size={12} className="fill-amber-600 text-white" />
+                    <span>Stale</span>
+                  </div>
+                </div>
+              ) : (
+                <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
+                  {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
+                </div>
+              )}
             </div>
 
             {/* Column 2: Transcript Diff - 20px line height to match */}
@@ -906,7 +937,36 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
               className="text-sm text-slate-700 relative group pr-8"
               style={{ lineHeight: '20px' }}
             >
-              {renderDiff(kase.results[p], aiRes?.revised_transcript)}
+              {stale && (
+                <div className="mb-3 select-none">
+                  <div className="inline-flex bg-slate-100 rounded-md p-1 gap-1">
+                    <button
+                      className={`px-3 py-1 text-xs uppercase font-bold rounded-md transition-all ${mode === 'eval' ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                      onClick={() => setDiffModes(prev => ({ ...prev, [p]: 'eval' }))}
+                      title="Snapshot vs Revised (Original Eval)"
+                    >
+                      Origin vs Revised
+                    </button>
+                    <button
+                      className={`px-3 py-1 text-xs uppercase font-bold rounded-md transition-all ${mode === 'drift' ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                      onClick={() => setDiffModes(prev => ({ ...prev, [p]: 'drift' }))}
+                      title="Snapshot vs Current (What changed on disk)"
+                    >
+                      Origin vs New
+                    </button>
+                    <button
+                      className={`px-3 py-1 text-xs uppercase font-bold rounded-md transition-all ${mode === 'gap' ? 'bg-white text-slate-800 shadow-sm ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                      onClick={() => setDiffModes(prev => ({ ...prev, [p]: 'gap' }))}
+                      title="Current vs Revised (How far is new from AI fix)"
+                    >
+                      New vs Revised
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {renderDiff(diffLeft, diffRight)}
+
               <button
                 className="absolute top-0 right-2 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all opacity-0 group-hover:opacity-100"
                 onClick={(e) => {
