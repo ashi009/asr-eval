@@ -70,6 +70,7 @@ func main() {
 	http.HandleFunc("/api/evaluate-llm", evaluateLLMHandler)
 	http.HandleFunc("/api/case", getCaseHandler)
 	http.HandleFunc("/api/reset-eval", resetEvalHandler)
+	http.HandleFunc("/api/config", configHandler)
 
 	port := 8080
 	fmt.Printf("Attempting to listen on 127.0.0.1:%d...\n", port)
@@ -79,6 +80,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to bind to 127.0.0.1:%d: %v\n", port, err)
 	}
+}
+
+func configHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"llm_model": llmModelFlag,
+	})
 }
 
 func listFilesHandler(w http.ResponseWriter, r *http.Request) {

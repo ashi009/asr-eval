@@ -157,6 +157,14 @@ function Layout() {
   // Sidebar State
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isOverlay, setIsOverlay] = useState(false);
+  const [llmModel, setLlmModel] = useState<string>("");
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => setLlmModel(data.llm_model))
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -202,9 +210,16 @@ function Layout() {
       >
         <div className="p-4 border-b border-slate-200 bg-white w-full">
           <div className="flex items-center gap-2 mb-4 justify-between">
-            <div className="flex items-center gap-2">
-              <AudioLines className="text-primary" />
-              <h1 className="font-bold">ASR Eval Pro</h1>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-2">
+                <AudioLines className="text-primary" />
+                <h1 className="font-bold">ASR Eval Pro</h1>
+              </div>
+              {llmModel && (
+                <div className="text-[10px] font-mono text-slate-500 pl-8 opacity-80">
+                  {llmModel}
+                </div>
+              )}
             </div>
             <button onClick={toggleSidebar} className="p-1 hover:bg-slate-100 rounded lg:hidden">
               <span className="sr-only">Close sidebar</span>
@@ -599,7 +614,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
             </div>
             <button
               onClick={runEval}
-              disabled={isProcessingThisCase}
+              disabled={isProcessingThisCase || Object.values(selectedServices).filter(Boolean).length === 0}
               className="bg-primary hover:bg-blue-600 disabled:opacity-50 text-white px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-colors ml-auto"
             >
               {isProcessingThisCase ? 'Running...' : <><Play size={12} /> Run AI Eval ({Object.values(selectedServices).filter(Boolean).length})</>}
