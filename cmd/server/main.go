@@ -114,10 +114,14 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 	}
 	infoMap := make(map[string]*caseInfo)
 
+	targetSuffix := fmt.Sprintf(".%s.result.json", llmModelFlag)
+	// oldSuffix := ".result.json" // Removed unused variable
+
 	for _, f := range files {
 		name := f.Name()
-		if strings.HasSuffix(name, ".result.json") && !strings.HasSuffix(name, ".bak") {
-			id := strings.Split(name, ".")[0]
+		// STRICT filtering: only accept [id].[llmModelFlag].result.json
+		if strings.HasSuffix(name, targetSuffix) {
+			id := strings.TrimSuffix(name, targetSuffix)
 			if infoMap[id] == nil {
 				infoMap[id] = &caseInfo{hasEval: true, maxScore: -1}
 			}
@@ -129,32 +133,19 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 			}
 
 			var fileData AIResultFile
-			var resMap map[string]llm.EvalResult
-
+			// We only care about the specific model result in that file
 			if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
-				resMap = fileData.Results
-			} else {
-				// Try legacy format
-				json.Unmarshal(content, &resMap)
-			}
-
-			if resMap != nil {
-				for provider, res := range resMap {
+				// The result file for a model should ideally contain results FOR that model.
+				// But our format matches keys like "volc", "gemini".
+				// We display WHO defeated WHO? No, list view just needs best.
+				// Actually, if we filter by model, we only care about THAT model's performance?
+				// User wants "only show results from specified llm".
+				// So "Best Performer" concept changes to just "Score".
+				// But let's stick to existing structure: if result exists, it has a score.
+				for provider, res := range fileData.Results {
 					if res.Score > infoMap[id].maxScore {
 						infoMap[id].maxScore = res.Score
 						infoMap[id].bestPerformers = []string{provider}
-					} else if res.Score == infoMap[id].maxScore && res.Score >= 0 {
-						// Add to winners if score is tied
-						exists := false
-						for _, p := range infoMap[id].bestPerformers {
-							if p == provider {
-								exists = true
-								break
-							}
-						}
-						if !exists {
-							infoMap[id].bestPerformers = append(infoMap[id].bestPerformers, provider)
-						}
 					}
 				}
 			}
@@ -209,6 +200,8 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		AIResults: make(map[string]llm.EvalResult),
 	}
 
+	targetSuffix := fmt.Sprintf(".%s.result.json", llmModelFlag)
+
 	// Read all related files for this ID
 	files, _ := ioutil.ReadDir(datasetDir)
 	for _, f := range files {
@@ -222,8 +215,8 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(name, ".eval.json") {
 			content, _ := ioutil.ReadFile(path)
 			json.Unmarshal(content, &data.Evaluation)
-		} else if strings.HasSuffix(name, ".result.json") {
-			// This covers [id].result.json (legacy) and [id].[model].result.json (new)
+		} else if name == id+targetSuffix {
+			// STRICT filtering: Only read results for the ACTIVE model
 			content, _ := ioutil.ReadFile(path)
 
 			if data.AIResults == nil {
@@ -242,18 +235,6 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				if fileData.EvaluatedGroundTruth != "" {
 					data.EvaluatedGroundTruth = fileData.EvaluatedGroundTruth
-				}
-			} else {
-				// Try legacy format (map of results)
-				var legacyResults map[string]llm.EvalResult
-				if err := json.Unmarshal(content, &legacyResults); err == nil {
-					for k, v := range legacyResults {
-						data.AIResults[k] = v
-						// In legacy format, we don't have OriginalTranscript inside the struct
-						// But the legacy file might have had evaluated_transcripts map (handled by migration tool)
-						// If we are reading a legacy file directly here, we might miss them.
-						// But the server should mostly see migrated or new files now.
-					}
 				}
 			}
 		} else if strings.HasSuffix(name, ".flac") {
@@ -305,7 +286,35 @@ func evaluateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func resetEvalHandler(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Reset not implemented for multi-provider results yet", http.StatusNotImplemented)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Strictly target the file for the current model
+	filename := fmt.Sprintf("%s.%s.result.json", id, llmModelFlag)
+	path := filepath.Join(datasetDir, filename)
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// If specific file doesn't exist, maybe it's legacy?
+		// But in strict mode we probably only want to delete what we see.
+		// Let's just try to delete and ignore not exist.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if err := os.Remove(path); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete result file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {

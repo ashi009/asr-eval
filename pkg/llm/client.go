@@ -39,6 +39,7 @@ var ModelRegistry = map[string]ClientFactory{
 	"gemini-3-flash-preview": func() (LLMClient, error) {
 		return NewGoogleAIClient("gemini-3-flash-preview", os.Getenv("GEMINI_API_KEY"))
 	},
+	"gemini-2.5-flash": func() (LLMClient, error) { return NewGoogleAIClient("gemini-2.5-flash", os.Getenv("GEMINI_API_KEY")) },
 	"gemini-2.0-flash": func() (LLMClient, error) { return NewGoogleAIClient("gemini-2.0-flash", os.Getenv("GEMINI_API_KEY")) },
 	"gemini-1.5-pro":   func() (LLMClient, error) { return NewGoogleAIClient("gemini-1.5-pro", os.Getenv("GEMINI_API_KEY")) },
 	"gemini-1.5-flash": func() (LLMClient, error) { return NewGoogleAIClient("gemini-1.5-flash", os.Getenv("GEMINI_API_KEY")) },
