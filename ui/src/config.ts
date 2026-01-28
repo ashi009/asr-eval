@@ -1,4 +1,17 @@
-export const SERVICE_CONFIG = {
+interface ColorConfig {
+  dot: string;
+  ring: string;
+  text: string;
+  border: string;
+}
+
+export interface ServiceConfigItem {
+  name: string;
+  enabled?: boolean;
+  color: ColorConfig;
+}
+
+export const SERVICE_CONFIG: Record<string, ServiceConfigItem> = {
   // Volcengine
   'volc': {
     name: 'Volcengine',
@@ -95,7 +108,7 @@ export const SERVICE_CONFIG = {
   }
 };
 
-export const getServiceConfig = (id) => {
+export const getServiceConfig = (id: string): ServiceConfigItem => {
   const key = id.toLowerCase();
   if (SERVICE_CONFIG[key]) {
     return SERVICE_CONFIG[key];

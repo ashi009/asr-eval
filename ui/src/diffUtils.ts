@@ -1,7 +1,9 @@
-import { diffArrays } from 'diff';
+import { diffArrays, ArrayChange } from 'diff';
+
+
 
 // Smart segmentation for mixed English/Chinese text
-const segmentText = (text) => {
+const segmentText = (text: string): string[] => {
   if (!text) return [];
   // Use Intl.Segmenter if available (modern browsers)
   if (typeof Intl !== 'undefined' && Intl.Segmenter) {
@@ -14,7 +16,9 @@ const segmentText = (text) => {
   return text.split(/(\s+|[\u4e00-\u9fa5])/).filter(Boolean);
 };
 
-export const smartDiff = (original, revised) => {
+export type DiffChange = ArrayChange<string>;
+
+export const smartDiff = (original: string, revised: string): DiffChange[] => {
   const oldArr = segmentText(original);
   const newArr = segmentText(revised);
   return diffArrays(oldArr, newArr);

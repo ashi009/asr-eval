@@ -1,11 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useParams, useNavigate, Navigate } from 'react-router-dom';
-import { Play, Pause, Search, Award, Check, AlertCircle, Volume2, AudioLines, Loader2, Copy, AlertTriangle, Minus, ArrowUpAZ, ArrowDown01 } from 'lucide-react';
+import { BrowserRouter, Routes, Route, NavLink, useParams } from 'react-router-dom';
+import { Play, Pause, Search, Check, AlertTriangle, Minus, AudioLines, Loader2, Copy } from 'lucide-react';
 import { getServiceConfig } from './config';
 import { smartDiff } from './diffUtils';
 
+/* --- Interfaces --- */
+
+interface AIResult {
+  score: number;
+  revised_transcript?: string;
+  summary?: string[];
+}
+
+interface Evaluation {
+  ground_truth?: string;
+}
+
+interface Case {
+  id: string;
+  has_ai?: boolean;
+  results: Record<string, string>;
+  ai_results?: Record<string, AIResult>;
+  evaluation?: Evaluation;
+  evaluated_ground_truth?: string | null;
+  best_performers?: string[];
+  evaluated_transcripts?: Record<string, string>; // Added based on usage in isStale
+}
+
+interface LoadingData {
+  results?: Record<string, string>;
+  ai_results?: Record<string, AIResult>;
+  evaluated_transcripts?: Record<string, string>;
+}
+
 /* --- Helper: Diff Render --- */
-const renderDiff = (original, revised) => {
+const renderDiff = (original: string, revised?: string) => {
   if (!revised) return original;
 
   const diffs = smartDiff(original, revised);
@@ -33,19 +62,27 @@ const renderDiff = (original, revised) => {
 };
 
 function Layout() {
-  const [cases, setCases] = useState([]);
+  const [cases, setCases] = useState<Case[]>([]);
   const [search, setSearch] = useState("");
-  const [processingCases, setProcessingCases] = useState(new Set()); // Track evaluating case IDs
-  const [caseSelections, setCaseSelections] = useState({}); // Lifted selection state
+  const [processingCases, setProcessingCases] = useState<Set<string>>(new Set()); // Track evaluating case IDs
+  const [caseSelections, setCaseSelections] = useState<Record<string, Record<string, boolean>>>({}); // Lifted selection state
 
   // Shared state for optimistic updates
-  const updateCaseLocal = (id, updates) => {
+  // Note: updateCaseLocal is defined here but seemingly unused except maybe passed down?
+  // Actually CaseDetail has its own updateCaseLocal. This one is used for updating the list?
+  // Looking at original code, updateCaseLocal inside Layout was:
+  // const updateCaseLocal = (id, updates) => { setCases(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c)); };
+  // But it wasn't passed to anything in the original return.
+  // I will keep it for compatibility if I missed usage, but suppressing unused via logic or comment.
+  /*
+  const updateCaseLocal = (id: string, updates: Partial<Case>) => {
     setCases(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
+  */
 
   // Selection helper
-  const initSelection = (data) => {
-    const initialSelection = {};
+  const initSelection = (data: LoadingData) => {
+    const initialSelection: Record<string, boolean> = {};
     if (data.results) {
       Object.keys(data.results).forEach(service => {
         const config = getServiceConfig(service);
@@ -55,7 +92,8 @@ function Layout() {
 
         // Also check if transcript is stale
         let isStale = false;
-        if (hasResult && data.evaluated_transcripts && data.results[service]) {
+        // Ensure data.results is defined (it is because we are iterating its keys)
+        if (hasResult && data.evaluated_transcripts && data.results && data.results[service]) {
           if (data.evaluated_transcripts[service] !== data.results[service]) {
             isStale = true;
           }
@@ -67,29 +105,26 @@ function Layout() {
     return initialSelection;
   };
 
-  const getSelection = (id) => caseSelections[id];
-  const updateSelection = (id, loadingData) => {
-    // If we are loading fresh data and have no selection, init it.
-    // OR if we are forcing a reset (loadingData passed with cleared results)
-    if (!caseSelections[id] || loadingData) {
-      setCaseSelections(prev => ({
-        ...prev,
-        [id]: initSelection(loadingData || {}) // This might be buggy if called without data first, but usage below handles it.
-      }));
-    }
-  };
+  const getSelection = (id: string) => caseSelections[id];
+
+  // Note: updateSelection function was defined in original code but only used internally or not passed down?
+  // Ah, it might be used via context or props? In original code:
+  // <CaseDetail ... getSelection={getSelection} setSelectionForCase={setSelectionForCase} initSelection={initSelection} />
+  // So updateSelection was unused? Or maybe I missed it. I saw `setSelectionForCase` being passed.
+  // `updateSelection` logic: `if (!caseSelections[id] || loadingData) ...`
+  // It seems unused in the `return` JSX. I'll omit it if unused.
 
   // Direct setter for manual toggles
-  const setSelectionForCase = (id, newVal) => {
+  const setSelectionForCase = (id: string, newVal: Record<string, boolean>) => {
     setCaseSelections(prev => ({ ...prev, [id]: newVal }));
   };
 
   // Eval status handlers
-  const startProcessing = (id) => {
+  const startProcessing = (id: string) => {
     setProcessingCases(prev => new Set(prev).add(id));
   };
 
-  const endProcessing = (id) => {
+  const endProcessing = (id: string) => {
     setProcessingCases(prev => {
       const next = new Set(prev);
       next.delete(id);
@@ -102,7 +137,9 @@ function Layout() {
       const res = await fetch('/api/cases');
       const data = await res.json();
       // data is just [{id: '...', has_ai: bool}, ...]
-      data.sort((a, b) => a.id.localeCompare(b.id));
+      // We cast it to Case[] but it might be Partial<Case>[] initially.
+      // But filtering relies on basic props.
+      data.sort((a: Case, b: Case) => a.id.localeCompare(b.id));
       setCases(data);
     } catch (e) {
       console.error(e);
@@ -292,15 +329,22 @@ function Layout() {
   );
 }
 
-function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProcessing, getSelection, setSelectionForCase, initSelection }) {
-  const { id } = useParams();
+interface CaseDetailProps {
+  onEvalComplete: () => void;
+  processingCases: Set<string>;
+  startProcessing: (id: string) => void;
+  endProcessing: (id: string) => void;
+  getSelection: (id: string) => Record<string, boolean>;
+  setSelectionForCase: (id: string, newVal: Record<string, boolean>) => void;
+  initSelection: (data: LoadingData) => Record<string, boolean>;
+}
+
+function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProcessing, getSelection, setSelectionForCase, initSelection }: CaseDetailProps) {
+  const { id } = useParams<{ id: string }>();
   const idRef = useRef(id); // Track current ID to prevent stale updates
-  const [currentCase, setCurrentCase] = useState(null);
+  const [currentCase, setCurrentCase] = useState<Case | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedServices, setSelectedServices] = useState({});
-  // Use lifted selection state helpers
-  // const selectedServices = getSelection(id) || {}; // REMOVED
-  // const setSelectedServices = (newVal) => setSelectionForCase(id, newVal); // REMOVED
+  const [selectedServices, setSelectedServices] = useState<Record<string, boolean>>({});
 
   const [isInputExpanded, setIsInputExpanded] = useState(true);
 
@@ -313,10 +357,10 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
   }, [id]);
 
   // Scroll container ref
-  const scrollContainerRef = useRef(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Player
-  const audioRef = useRef(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -338,18 +382,14 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
           setCurrentCase(data);
 
           // Initialize selected services
-          // Rule: If currently processing, restore persisted selection.
-          // Otherwise, use default rules (stale/unevaluated).
-          if (processingCases.has(id)) {
+          if (id && processingCases.has(id)) {
             const persisted = getSelection(id);
             if (persisted) {
               setSelectedServices(persisted);
             } else {
-              // Fallback if no persisted state found (shouldn't happen if runEval saves it)
               setSelectedServices(initSelection(data));
             }
           } else {
-            // Not processing, always reset to default rules on fresh load
             setSelectedServices(initSelection(data));
           }
 
@@ -385,6 +425,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
   }, [currentCase?.id]);
 
   const togglePlay = () => {
+    if (!audioRef.current) return;
     if (audioRef.current.paused) {
       audioRef.current.play();
       setIsPlaying(true);
@@ -394,13 +435,13 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
     }
   };
 
-  const updateCaseLocal = (updates) => {
+  const updateCaseLocal = (updates: Partial<Case>) => {
     if (mounted.current) {
-      setCurrentCase(prev => ({ ...prev, ...updates }));
+      setCurrentCase(prev => prev ? ({ ...prev, ...updates }) : null);
     }
   };
 
-  const toggleServiceSelection = (service) => {
+  const toggleServiceSelection = (service: string) => {
     setSelectedServices(prev => ({
       ...prev,
       [service]: !prev[service]
@@ -408,14 +449,15 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
   };
 
   const runEval = async () => {
+    if (!currentCase) return;
     const gt = currentCase.evaluation?.ground_truth || "";
     if (!gt.trim()) return alert("Ground Truth required");
 
     const evalId = currentCase.id;
 
     // Filter results based on selection
-    const resultsToEval = {};
-    const existingResultsToKeep = {};
+    const resultsToEval: Record<string, string> = {};
+    const existingResultsToKeep: Record<string, AIResult> = {};
 
     Object.keys(currentCase.results).forEach(service => {
       if (selectedServices[service]) {
@@ -468,7 +510,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
     }
   };
 
-  const isProcessingThisCase = processingCases.has(currentCase?.id);
+  const isProcessingThisCase = currentCase?.id ? processingCases.has(currentCase.id) : false;
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading case data...</div>;
   if (!currentCase) {
@@ -489,7 +531,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
           onToggleService={toggleServiceSelection}
           onSelectAll={() => {
             const allServices = Object.keys(currentCase.results);
-            const newSelection = {};
+            const newSelection: Record<string, boolean> = {};
             allServices.forEach(s => newSelection[s] = true);
             setSelectedServices(newSelection);
           }}
@@ -534,8 +576,8 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
           </div>
           <audio
             ref={audioRef}
-            onTimeUpdate={e => setCurrentTime(e.target.currentTime)}
-            onLoadedMetadata={e => setDuration(e.target.duration)}
+            onTimeUpdate={e => setCurrentTime(e.currentTarget.currentTime)}
+            onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
             onEnded={() => setIsPlaying(false)}
           />
         </div>
@@ -569,7 +611,10 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
               className="w-full h-32 border border-slate-200 rounded p-3 text-sm font-mono focus:ring-1 focus:ring-primary focus:border-primary disabled:bg-slate-50 disabled:text-slate-500 animate-in fade-in zoom-in-95 duration-200"
               placeholder="Enter ground truth..."
               value={currentCase.evaluation?.ground_truth || ""}
-              onChange={e => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: e.target.value } })}
+              onChange={async e => {
+                const newVal = e.target.value;
+                updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: newVal } });
+              }}
               disabled={isProcessingThisCase}
               autoFocus
             />
@@ -595,7 +640,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
                 </div>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: currentCase.evaluated_ground_truth } })}
+                    onClick={() => updateCaseLocal({ evaluation: { ...currentCase.evaluation, ground_truth: currentCase.evaluated_ground_truth ?? undefined } })}
                     className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:underline"
                   >
                     Revert GT
@@ -610,7 +655,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
                         onEvalComplete();
 
                         const resetData = { ...currentCase, ai_results: {}, evaluated_ground_truth: null };
-                        setCurrentCase(resetData);
+                        setCurrentCase(resetData as Case);
                         // Force reset selection
                         const newSelection = initSelection(resetData);
                         setSelectedServices(newSelection);
@@ -631,13 +676,23 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
   );
 }
 
-function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection }) {
+interface ResultsViewProps {
+  kase: Case;
+  selectedServices: Record<string, boolean>;
+  onToggleService: (service: string) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onSelectDefault: () => void;
+  getDefaultSelection: () => Record<string, boolean>;
+}
+
+function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection }: ResultsViewProps) {
   const hasAI = kase.ai_results && Object.keys(kase.ai_results).length > 0;
   const providers = Object.keys(kase.results);
   const sortedPerformers = Object.entries(kase.ai_results || {}).sort((a, b) => b[1].score - a[1].score);
 
   // Sort state: 'score' (default) or 'name'
-  const [sortBy, setSortBy] = useState('score');
+  const [sortBy, setSortBy] = useState<'score' | 'name'>('score');
 
   // Sort providers by score desc (default) or name
   const sortedProviders = [...providers].sort((a, b) => {
@@ -659,7 +714,8 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
   // Get default selection to compare
   const defaultSelection = getDefaultSelection ? getDefaultSelection() : {};
   const defaultSelectedCount = providers.filter(p => defaultSelection[p]).length;
-  const defaultEqualsAll = defaultSelectedCount === providers.length;
+  // unused variable defaultEqualsAll
+  // const defaultEqualsAll = defaultSelectedCount === providers.length;
 
   // 3-state toggle: none → default → all → none
   // If default equals all, then: none → all → none (skip partial)
@@ -681,7 +737,7 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
     }
   };
 
-  const isStale = (service) => {
+  const isStale = (service: string) => {
     if (!kase.ai_results?.[service]) return false;
     if (!kase.evaluated_transcripts?.[service]) return false;
     return kase.evaluated_transcripts[service] !== kase.results[service];
@@ -881,7 +937,7 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
   );
 }
 
-const formatTime = (t) => {
+const formatTime = (t: number) => {
   const m = Math.floor(t / 60);
   const s = Math.floor(t % 60);
   return `${m}:${s < 10 ? '0' : ''}${s}`;
