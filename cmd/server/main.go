@@ -34,13 +34,16 @@ type Evaluation struct {
 type AIResultFile struct {
 	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
 	Results              map[string]llm.EvalResult `json:"results"`
-	EvaluatedTranscripts map[string]string         `json:"evaluated_transcripts"`
 }
 
-var datasetDir string
+var (
+	datasetDir   string
+	llmModelFlag string
+)
 
 func main() {
 	flag.StringVar(&datasetDir, "dataset-dir", "transcripts_and_audios", "Directory containing transcripts and audio files")
+	flag.StringVar(&llmModelFlag, "llm-model", "doubao-seed-1-8-251228", "LLM model to use for evaluation")
 	flag.Parse()
 
 	_ = godotenv.Load()
@@ -71,6 +74,7 @@ func main() {
 	port := 8080
 	fmt.Printf("Attempting to listen on 127.0.0.1:%d...\n", port)
 	fmt.Printf("Using dataset directory: %s\n", datasetDir)
+	fmt.Printf("Default LLM Model: %s\n", llmModelFlag)
 	err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), nil)
 	if err != nil {
 		log.Fatalf("Failed to bind to 127.0.0.1:%d: %v\n", port, err)
@@ -90,7 +94,66 @@ func listFilesHandler(w http.ResponseWriter, r *http.Request) {
 func scanFiles(root string) ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	files, err := ioutil.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+
+	type caseInfo struct {
+		hasEval        bool
+		bestPerformers []string
+		maxScore       float64
+	}
+	infoMap := make(map[string]*caseInfo)
+
+	for _, f := range files {
+		name := f.Name()
+		if strings.HasSuffix(name, ".result.json") && !strings.HasSuffix(name, ".bak") {
+			id := strings.Split(name, ".")[0]
+			if infoMap[id] == nil {
+				infoMap[id] = &caseInfo{hasEval: true, maxScore: -1}
+			}
+
+			// Read scores to find winners
+			content, err := ioutil.ReadFile(filepath.Join(root, name))
+			if err != nil {
+				continue
+			}
+
+			var fileData AIResultFile
+			var resMap map[string]llm.EvalResult
+
+			if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
+				resMap = fileData.Results
+			} else {
+				// Try legacy format
+				json.Unmarshal(content, &resMap)
+			}
+
+			if resMap != nil {
+				for provider, res := range resMap {
+					if res.Score > infoMap[id].maxScore {
+						infoMap[id].maxScore = res.Score
+						infoMap[id].bestPerformers = []string{provider}
+					} else if res.Score == infoMap[id].maxScore && res.Score >= 0 {
+						// Add to winners if score is tied
+						exists := false
+						for _, p := range infoMap[id].bestPerformers {
+							if p == provider {
+								exists = true
+								break
+							}
+						}
+						if !exists {
+							infoMap[id].bestPerformers = append(infoMap[id].bestPerformers, provider)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -105,42 +168,11 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 
 		basename := strings.TrimSuffix(name, ".flac")
 
-		// Check for existing results
 		hasEval := false
 		var bestPerformers []string
-		resultPath := filepath.Join(root, basename+".result.json")
-		if _, err := os.Stat(resultPath); err == nil {
-			hasEval = true
-			// Calculate best performer
-			content, err := ioutil.ReadFile(resultPath)
-			if err == nil {
-				var aiResults map[string]llm.EvalResult
-
-				// Try new format first
-				var fileData AIResultFile
-				if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
-					aiResults = fileData.Results
-				} else {
-					// Fallback to old format (map)
-					json.Unmarshal(content, &aiResults)
-				}
-
-				if aiResults != nil {
-					var maxScore float64 = -1.0
-					// First pass: find max score
-					for _, res := range aiResults {
-						if res.Score > maxScore {
-							maxScore = res.Score
-						}
-					}
-					// Second pass: collect all matching max score
-					for name, res := range aiResults {
-						if res.Score >= maxScore && maxScore >= 0 {
-							bestPerformers = append(bestPerformers, name)
-						}
-					}
-				}
-			}
+		if info, ok := infoMap[basename]; ok {
+			hasEval = info.hasEval
+			bestPerformers = info.bestPerformers
 		}
 
 		results = append(results, map[string]interface{}{
@@ -173,36 +205,65 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 	files, _ := ioutil.ReadDir(datasetDir)
 	for _, f := range files {
 		name := f.Name()
-		if strings.HasPrefix(name, id) {
-			path := filepath.Join(datasetDir, name)
+		if !strings.HasPrefix(name, id) {
+			continue
+		}
 
-			if strings.HasSuffix(name, ".eval.json") {
-				content, _ := ioutil.ReadFile(path)
-				json.Unmarshal(content, &data.Evaluation)
-			} else if strings.HasSuffix(name, ".result.json") {
-				content, _ := ioutil.ReadFile(path)
+		path := filepath.Join(datasetDir, name)
 
-				// Try new format
-				var fileData AIResultFile
-				if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
-					data.AIResults = fileData.Results
-					data.EvaluatedGroundTruth = fileData.EvaluatedGroundTruth
-					data.EvaluatedTranscripts = fileData.EvaluatedTranscripts
-				} else {
-					// Fallback
-					json.Unmarshal(content, &data.AIResults)
+		if strings.HasSuffix(name, ".eval.json") {
+			content, _ := ioutil.ReadFile(path)
+			json.Unmarshal(content, &data.Evaluation)
+		} else if strings.HasSuffix(name, ".result.json") {
+			// This covers [id].result.json (legacy) and [id].[model].result.json (new)
+			content, _ := ioutil.ReadFile(path)
+
+			if data.AIResults == nil {
+				data.AIResults = make(map[string]llm.EvalResult)
+			}
+			if data.EvaluatedTranscripts == nil {
+				data.EvaluatedTranscripts = make(map[string]string)
+			}
+
+			var fileData AIResultFile
+			if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
+				// Merge results
+				for k, v := range fileData.Results {
+					data.AIResults[k] = v
+					data.EvaluatedTranscripts[k] = v.OriginalTranscript
 				}
-			} else if strings.HasSuffix(name, ".flac") {
-				// Audio file, ignore
+				if fileData.EvaluatedGroundTruth != "" {
+					data.EvaluatedGroundTruth = fileData.EvaluatedGroundTruth
+				}
 			} else {
-				// Transcript files
-				ext := filepath.Ext(name)
-				if ext != "" && ext != ".json" {
-					provider := strings.TrimPrefix(ext, ".")
-					content, err := ioutil.ReadFile(path)
-					if err == nil {
-						data.Results[provider] = string(content)
+				// Try legacy format (map of results)
+				var legacyResults map[string]llm.EvalResult
+				if err := json.Unmarshal(content, &legacyResults); err == nil {
+					for k, v := range legacyResults {
+						data.AIResults[k] = v
+						// In legacy format, we don't have OriginalTranscript inside the struct
+						// But the legacy file might have had evaluated_transcripts map (handled by migration tool)
+						// If we are reading a legacy file directly here, we might miss them.
+						// But the server should mostly see migrated or new files now.
 					}
+				}
+			}
+		} else if strings.HasSuffix(name, ".flac") {
+			// Audio file, ignore
+		} else {
+			// Transcript files (e.g. id.volc.txt, id.volc2.txt)
+			// Assuming format id.[provider].txt or pure text files
+			ext := filepath.Ext(name)
+			// Heuristic: if it's not one of the known json extensions and not flac
+			if ext != "" && ext != ".json" && ext != ".flac" {
+				// provider is derived from filename?
+				// e.g. "uuid.volc2" -> provider "volc2"
+				// e.g. "uuid.txt" -> provider "txt"?
+				// The previous code used `strings.TrimPrefix(ext, ".")` which returns "volc2"
+				provider := strings.TrimPrefix(ext, ".")
+				content, err := ioutil.ReadFile(path)
+				if err == nil {
+					data.Results[provider] = string(content)
 				}
 			}
 		}
@@ -236,22 +297,7 @@ func evaluateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func resetEvalHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	id := r.URL.Query().Get("id")
-	if id == "" {
-		http.Error(w, "id is required", http.StatusBadRequest)
-		return
-	}
-
-	filename := filepath.Join(datasetDir, id+".result.json")
-	if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+	http.Error(w, "Reset not implemented for multi-provider results yet", http.StatusNotImplemented)
 }
 
 func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +310,7 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 		ID              string                    `json:"id"`
 		GroundTruth     string                    `json:"ground_truth"`
 		Results         map[string]string         `json:"results"`
-		ExistingResults map[string]llm.EvalResult `json:"existing_results"`
+		ExistingResults map[string]llm.EvalResult `json:"existing_results"` // Ignored in favor of disk + new eval
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -272,83 +318,64 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-Save Ground Truth to [ID].eval.json before running eval
+	// 1. Save Ground Truth
 	evalFilename := filepath.Join(datasetDir, req.ID+".eval.json")
 	var evalData Evaluation
 	if content, err := ioutil.ReadFile(evalFilename); err == nil {
 		json.Unmarshal(content, &evalData)
 	}
-	evalData.GroundTruth = req.GroundTruth // Update GT, preserve Comment
+	evalData.GroundTruth = req.GroundTruth
 	evalBytes, _ := json.MarshalIndent(evalData, "", "  ")
 	ioutil.WriteFile(evalFilename, evalBytes, 0644)
 
-	var results map[string]llm.EvalResult
-	var err error
+	// 2. Setup LLM Client
+	client, err := llm.NewClient(llmModelFlag)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
+		return
+	}
+	evaluator := llm.NewEvaluator(client)
 
-	// Only run evaluation if there are results to evaluate
+	// 3. Run Evaluation
+	var newResults map[string]llm.EvalResult
 	if len(req.Results) > 0 {
-		evaluator := llm.NewEvaluator()
-		results, err = evaluator.Evaluate(r.Context(), req.GroundTruth, req.Results)
+		newResults, err = evaluator.Evaluate(r.Context(), req.GroundTruth, req.Results)
 		if err != nil {
 			log.Printf("LLM Eval failed: %v", err)
 			http.Error(w, fmt.Sprintf("LLM evaluation failed: %v", err), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		results = make(map[string]llm.EvalResult)
+		newResults = make(map[string]llm.EvalResult)
 	}
 
-	// Merge existing results (taking precedence if not overwritten)
-	// 1. Start with what's on disk (safest source of truth)
-	finalResults := make(map[string]llm.EvalResult)
-	evaluatedTranscripts := make(map[string]string)
-	var evaluatedGroundTruth string
+	// 4. Determine Output File
+	resultFilename := filepath.Join(datasetDir, fmt.Sprintf("%s.%s.result.json", req.ID, llmModelFlag))
 
-	filename := filepath.Join(datasetDir, req.ID+".result.json")
-	if fileBytes, err := ioutil.ReadFile(filename); err == nil {
-		// Try new format
+	// 5. Load Existing Results (stateful merge)
+	finalResults := make(map[string]llm.EvalResult)
+
+	if fileBytes, err := ioutil.ReadFile(resultFilename); err == nil {
 		var fileData AIResultFile
 		if err := json.Unmarshal(fileBytes, &fileData); err == nil && fileData.Results != nil {
 			finalResults = fileData.Results
-			evaluatedGroundTruth = fileData.EvaluatedGroundTruth
-			evaluatedTranscripts = fileData.EvaluatedTranscripts
-		} else {
-			// Old format
-			json.Unmarshal(fileBytes, &finalResults)
 		}
 	}
 
-	if evaluatedTranscripts == nil {
-		evaluatedTranscripts = make(map[string]string)
-	}
-
-	// 2. Merge frontend provided existing results (optional, but respects request payload)
-	for k, v := range req.ExistingResults {
+	// 6. Merge New Results
+	for k, v := range newResults {
 		finalResults[k] = v
 	}
 
-	// 3. Overwrite with new evaluations
-	for k, v := range results {
-		finalResults[k] = v
-		// Also update the evaluated transcript for this service
-		if transcript, ok := req.Results[k]; ok {
-			evaluatedTranscripts[k] = transcript
-		}
-	}
-
-	// Update processed GT to current one
-	evaluatedGroundTruth = req.GroundTruth
-
-	// Persist Results in new format
+	// 7. Save
 	fileData := AIResultFile{
-		EvaluatedGroundTruth: evaluatedGroundTruth,
+		EvaluatedGroundTruth: req.GroundTruth,
 		Results:              finalResults,
-		EvaluatedTranscripts: evaluatedTranscripts,
 	}
-
 	data, _ := json.MarshalIndent(fileData, "", "  ")
-	ioutil.WriteFile(filename, data, 0644)
+	ioutil.WriteFile(resultFilename, data, 0644)
 
+	// 8. Return merged results (could be partial if user only wanted to see what just happened, but typically specific provider results)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(finalResults)
 }
