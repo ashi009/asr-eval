@@ -745,51 +745,54 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
 
   return (
     <div>
-      {/* Sticky Header: Perf Distribution + Grid Header */}
-      <div className="sticky top-0 z-20 bg-white -mx-8 px-8">
-        {/* Performance Distribution */}
-        {hasAI && (
-          <div className="pt-4 pb-8">
-            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-4">Perf Distribution</h3>
-            <div className="relative h-1 bg-slate-200 rounded-full mx-3">
-              {/* Axis Markers */}
-              {[0, 50, 100].map((val) => (
-                <div
-                  key={val}
-                  className="absolute top-1/2"
-                  style={{ left: `${val}%`, transform: `translateX(-50%) translateY(-50%)` }}
-                >
-                  <span className="absolute top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono text-slate-400">
-                    {val}
-                  </span>
-                </div>
-              ))}
-              {/* Score Dots with Tooltips */}
-              {sortedPerformers.map(([p, res]) => {
-                const score = res.score * 100;
-                const config = getServiceConfig(p);
-                // Viewport-aware tooltip: left edge -> right align, right edge -> left align
-                const isNearLeft = score < 15;
-                const isNearRight = score > 85;
-                let tooltipPosition = 'left-1/2 -translate-x-1/2'; // default: center
-                if (isNearLeft) tooltipPosition = 'left-0';
-                else if (isNearRight) tooltipPosition = 'right-0';
-                return (
-                  <div
-                    key={p}
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer group"
-                    style={{ left: `${score}%` }}
-                  >
-                    <div className={`w-3 h-3 rounded-full ${config.color.dot} border-2 border-white shadow-sm`} />
-                    <div className={`absolute bottom-full ${tooltipPosition} mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}>
-                      {config.name}: {Math.round(score)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      <div className="sticky top-0 z-20 bg-white -mx-8 px-8 flex flex-col">
+        {/* Case ID Header */}
+        <div className="py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 pl-8">
+            <span className="text-sm font-mono font-medium text-slate-700 select-all">{kase.id}</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(kase.id);
+              }}
+              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-primary transition-colors"
+              title="Copy Case ID"
+            >
+              <Copy size={12} />
+            </button>
           </div>
-        )}
+        </div>
+
+        {/* Persistent Axis Separator */}
+        <div className="relative h-px bg-slate-200">
+          {hasAI && (
+            <div className="absolute inset-0">
+              <div className="relative w-full h-full">
+                {/* Score Dots with Tooltips */}
+                {sortedPerformers.map(([p, res]) => {
+                  const score = res.score * 100;
+                  const config = getServiceConfig(p);
+                  const isNearLeft = score < 15;
+                  const isNearRight = score > 85;
+                  let tooltipPosition = 'left-1/2 -translate-x-1/2';
+                  if (isNearLeft) tooltipPosition = 'left-0';
+                  else if (isNearRight) tooltipPosition = 'right-0';
+                  return (
+                    <div
+                      key={p}
+                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer group"
+                      style={{ left: `${score}%` }}
+                    >
+                      <div className={`w-3 h-3 rounded-full ${config.color.dot} border-2 border-white shadow-sm hover:scale-125 transition-transform`} />
+                      <div className={`absolute bottom-full ${tooltipPosition} mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30`}>
+                        {config.name}: {Math.round(score)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Grid Header - border extends to container edges */}
         <div className="-mx-8 px-8 border-b border-slate-200">
@@ -803,10 +806,10 @@ function ResultsView({ kase, selectedServices, onToggleService, onSelectAll, onD
                   e.stopPropagation();
                   handleHeaderCheckboxClick();
                 }}
-                className="w-5 h-5 rounded-full flex items-center justify-center transition-all shrink-0 bg-slate-400 border-2 border-white shadow-sm cursor-pointer"
+                className="w-4 h-4 rounded-full flex items-center justify-center transition-all shrink-0 bg-white border-2 border-slate-400 shadow-sm cursor-pointer"
               >
-                {selectionState === 'all' && <Check size={12} className="text-white" strokeWidth={4} />}
-                {selectionState === 'partial' && <Minus size={12} className="text-white" strokeWidth={4} />}
+                {selectionState === 'all' && <Check size={10} className="text-slate-500" strokeWidth={4} />}
+                {selectionState === 'partial' && <Minus size={10} className="text-slate-500" strokeWidth={4} />}
               </button>
             </div>
             {/* Service / Score - clickable text to sort */}
