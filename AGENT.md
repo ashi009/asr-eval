@@ -11,20 +11,26 @@ The project consists of a Go backend and a React (Vite) frontend.
     -   `/api/case`: Retrieves details for a specific case.
     -   `/api/evaluate`: Saves human evaluation results.
     -   `/api/evaluate-llm`: Triggers LLM-based evaluation.
+    -   `/api/config`: Exposes server configuration (e.g., current LLM model).
+    -   `/api/reset-eval`: Deletes evaluation results for the current model.
 -   **Frontend**: A Single Page Application (SPA) in `ui/`.
-    -   `App.jsx`: Main logic.
-    -   `config.js`: Service configuration (names, colors).
+    -   `App.tsx`: Main logic.
+    -   `config.ts`: Service configuration (names, colors).
 
 ## Key Workflows
 
-1.  **Listing Cases**: Scans the dataset directory (default: `transcripts_and_audios`) for `.flac` files and corresponding results.
+1.  **Listing Cases**: Scans the dataset directory for `.flac` files and corresponding results.
+    -   **Filtering**: The server STRICTLY filters results to only show those matching the active LLM model.
 2.  **Evaluation**:
     -   **Human**: User inputs ground truth and comments. Saved to `[ID].eval.json`.
-    -   **LLM**: User triggers LLM eval. Ground truth is saved, then `llm.Evaluator` processes results. Saved to `[ID].result.json`.
+    -   **LLM**: User triggers LLM eval. Saved to `[ID].[MODEL].result.json` (e.g., `id.gemini-2.5-flash.result.json`).
+3.  **Reset**:
+    -   Users can reset (delete) results for the *current* model via the UI.
 
 ## Configuration
 
 -   The dataset directory is configurable via the `--dataset-dir` flag in the server.
+-   **LLM Model**: Must be specified via `--llm-model` (e.g., `./server -llm-model gemini-2.5-flash`).
 -   Secrets are loaded from `.env` using `godotenv`.
 
 ## Development Guidelines
