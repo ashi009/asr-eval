@@ -46,11 +46,9 @@ func main() {
 			return nil
 		}
 
+		// Flexible splitting: ID is always the first part.
+		// Filename could be "id.result.json" (legacy) or "id.model.result.json" (intermediate)
 		parts := strings.Split(filename, ".")
-		if len(parts) != 3 {
-			return nil
-		}
-
 		id := parts[0]
 		log.Printf("Migrating %s (ID: %s)...", filename, id)
 
@@ -100,17 +98,17 @@ func main() {
 		for provider, v := range results {
 			// 1. Try from legacy EvaluatedTranscripts map
 			if transcript, ok := evaluatedTranscripts[provider]; ok && transcript != "" {
-				v.OriginalTranscript = transcript
+				v.Transcript = transcript
 			}
 
 			// 2. If still empty, try to find [id].[provider] file
-			if v.OriginalTranscript == "" {
+			if v.Transcript == "" {
 				ext := provider
 				// Heuristic: if provider is "txt", it's likely [id].txt
 				// If provider is "volc", it's [id].volc
 				transcriptPath := filepath.Join(*datasetDir, id+"."+ext)
-				if content, err := ioutil.ReadFile(transcriptPath); err == nil {
-					v.OriginalTranscript = string(content)
+				if transcriptBytes, err := ioutil.ReadFile(transcriptPath); err == nil {
+					v.Transcript = string(transcriptBytes)
 				} else if ext == "txt" {
 					// Sometimes it might just be [id].txt but provider is something else?
 					// Usually "txt" key means [id].txt
@@ -120,16 +118,32 @@ func main() {
 			newResults[provider] = v
 		}
 
-		newFile := NewAIResultFile{
-			EvaluatedGroundTruth: groundTruth,
-			Results:              newResults,
+		// 1. Save Ground Truth to [id].gt.json if present
+		if groundTruth != "" {
+			gtPath := filepath.Join(*datasetDir, id+".gt.json")
+			gtData := struct {
+				GroundTruth string `json:"ground_truth"`
+			}{
+				GroundTruth: groundTruth,
+			}
+			if gtBytes, err := json.MarshalIndent(gtData, "", "  "); err == nil {
+				if err := ioutil.WriteFile(gtPath, gtBytes, 0644); err != nil {
+					log.Printf("Error writing GT %s: %v", gtPath, err)
+				}
+			}
 		}
 
-		newFilename := fmt.Sprintf("%s.%s.result.json", id, *targetModel)
+		// 2. Save proper report to [id].[model].report.json
+		report := llm.EvalReport{
+			GroundTruth: groundTruth,
+			EvalResults: newResults,
+		}
+
+		newFilename := fmt.Sprintf("%s.%s.report.json", id, *targetModel)
 		newPath := filepath.Join(*datasetDir, newFilename)
 
 		// Save new file
-		data, _ := json.MarshalIndent(newFile, "", "  ")
+		data, _ := json.MarshalIndent(report, "", "  ")
 		if err := ioutil.WriteFile(newPath, data, 0644); err != nil {
 			log.Printf("Error writing %s: %v", newPath, err)
 			return nil
@@ -141,7 +155,7 @@ func main() {
 			log.Printf("Error backing up %s: %v", path, err)
 		}
 
-		log.Printf("Migrated %s -> %s", filename, newFilename)
+		log.Printf("Migrated %s -> %s (and GT)", filename, newFilename)
 		return nil
 	})
 
