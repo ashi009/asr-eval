@@ -29,8 +29,10 @@ var (
 )
 
 func main() {
+	var port int
 	flag.StringVar(&datasetDir, "dataset-dir", "transcripts_and_audios", "Directory containing transcripts and audio files")
 	flag.StringVar(&llmModelFlag, "llm-model", "doubao-seed-1-8-251228", "LLM model to use for evaluation")
+	flag.IntVar(&port, "port", 8080, "Port to listen on")
 	flag.Parse()
 
 	_ = godotenv.Load()
@@ -60,13 +62,10 @@ func main() {
 	// Let's keep endpoint for now or change it?
 	// Recommendation: Change endpoint to /api/reset-report for consistency.
 
-	// Wait, if I change endpoint, I must update frontend App.tsx. I just touched it.
-	// I'll stick to renaming HANDLERS first.
 	http.HandleFunc("/api/reset-eval", resetReportHandler)
 	http.HandleFunc("/api/save-gt", saveGTHandler)
 	http.HandleFunc("/api/config", configHandler)
 
-	port := 8080
 	fmt.Printf("Attempting to listen on 127.0.0.1:%d...\n", port)
 	fmt.Printf("Using dataset directory: %s\n", datasetDir)
 	fmt.Printf("Default LLM Model: %s\n", llmModelFlag)
@@ -133,6 +132,8 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 					if res.Score > infoMap[id].maxScore {
 						infoMap[id].maxScore = res.Score
 						infoMap[id].bestPerformers = []string{provider}
+					} else if res.Score == infoMap[id].maxScore {
+						infoMap[id].bestPerformers = append(infoMap[id].bestPerformers, provider)
 					}
 				}
 			}
