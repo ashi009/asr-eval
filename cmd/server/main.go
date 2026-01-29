@@ -16,24 +16,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type FileData struct {
-	ID                   string                    `json:"id"`
-	Filename             string                    `json:"filename"`
-	Results              map[string]string         `json:"results"`
-	Evaluation           Evaluation                `json:"evaluation"`
-	AIResults            map[string]llm.EvalResult `json:"ai_results"`
-	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
-	EvaluatedTranscripts map[string]string         `json:"evaluated_transcripts"`
-}
-
-type Evaluation struct {
-	GroundTruth string `json:"ground_truth"`
-	Comment     string `json:"comment"`
-}
-
-type AIResultFile struct {
-	EvaluatedGroundTruth string                    `json:"evaluated_ground_truth"`
-	Results              map[string]llm.EvalResult `json:"results"`
+type Case struct {
+	ID          string            `json:"id"`
+	GroundTruth string            `json:"ground_truth"`          // From [id].gt.json
+	Transcripts map[string]string `json:"transcripts"`           // From [id].[provider].txt
+	EvalReport  *llm.EvalReport   `json:"eval_report,omitempty"` // From [id].[model].report.json
 }
 
 var (
@@ -66,9 +53,17 @@ func main() {
 	http.Handle("/audio/", http.StripPrefix("/audio/", audioFs))
 
 	http.HandleFunc("/api/cases", listFilesHandler)
-	http.HandleFunc("/api/evaluate-llm", evaluateLLMHandler)
+	http.HandleFunc("/api/evaluate-llm", runEvalHandler)
 	http.HandleFunc("/api/case", getCaseHandler)
-	http.HandleFunc("/api/reset-eval", resetEvalHandler)
+	// User didn't explicitly ask to change endpoint path, but consistency implies it.
+	// But frontend calls /reset-eval. I should update frontend if I change endpoint.
+	// Let's keep endpoint for now or change it?
+	// Recommendation: Change endpoint to /api/reset-report for consistency.
+
+	// Wait, if I change endpoint, I must update frontend App.tsx. I just touched it.
+	// I'll stick to renaming HANDLERS first.
+	http.HandleFunc("/api/reset-eval", resetReportHandler)
+	http.HandleFunc("/api/save-gt", saveGTHandler)
 	http.HandleFunc("/api/config", configHandler)
 
 	port := 8080
@@ -113,12 +108,12 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 	}
 	infoMap := make(map[string]*caseInfo)
 
-	targetSuffix := fmt.Sprintf(".%s.result.json", llmModelFlag)
+	targetSuffix := fmt.Sprintf(".%s.report.json", llmModelFlag)
 	// oldSuffix := ".result.json" // Removed unused variable
 
 	for _, f := range files {
 		name := f.Name()
-		// STRICT filtering: only accept [id].[llmModelFlag].result.json
+		// STRICT filtering: only accept [id].[llmModelFlag].report.json
 		if strings.HasSuffix(name, targetSuffix) {
 			id := strings.TrimSuffix(name, targetSuffix)
 			if infoMap[id] == nil {
@@ -131,17 +126,10 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 				continue
 			}
 
-			var fileData AIResultFile
+			var report llm.EvalReport
 			// We only care about the specific model result in that file
-			if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
-				// The result file for a model should ideally contain results FOR that model.
-				// But our format matches keys like "volc", "gemini".
-				// We display WHO defeated WHO? No, list view just needs best.
-				// Actually, if we filter by model, we only care about THAT model's performance?
-				// User wants "only show results from specified llm".
-				// So "Best Performer" concept changes to just "Score".
-				// But let's stick to existing structure: if result exists, it has a score.
-				for provider, res := range fileData.Results {
+			if err := json.Unmarshal(content, &report); err == nil && report.EvalResults != nil {
+				for provider, res := range report.EvalResults {
 					if res.Score > infoMap[id].maxScore {
 						infoMap[id].maxScore = res.Score
 						infoMap[id].bestPerformers = []string{provider}
@@ -192,14 +180,12 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := &FileData{
-		ID:        id,
-		Filename:  id,
-		Results:   make(map[string]string),
-		AIResults: make(map[string]llm.EvalResult),
+	data := &Case{
+		ID:          id,
+		Transcripts: make(map[string]string),
 	}
 
-	targetSuffix := fmt.Sprintf(".%s.result.json", llmModelFlag)
+	targetSuffix := fmt.Sprintf(".%s.report.json", llmModelFlag)
 
 	// Read all related files for this ID
 	files, _ := ioutil.ReadDir(datasetDir)
@@ -210,44 +196,32 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		path := filepath.Join(datasetDir, name)
 
-		if name == id+targetSuffix {
+		if strings.HasSuffix(name, ".gt.json") {
+			content, _ := ioutil.ReadFile(path)
+			var gt struct {
+				GroundTruth string `json:"ground_truth"`
+			}
+			if err := json.Unmarshal(content, &gt); err == nil {
+				data.GroundTruth = gt.GroundTruth
+			}
+		} else if name == id+targetSuffix {
 			// STRICT filtering: Only read results for the ACTIVE model
 			content, _ := ioutil.ReadFile(path)
 
-			if data.AIResults == nil {
-				data.AIResults = make(map[string]llm.EvalResult)
-			}
-			if data.EvaluatedTranscripts == nil {
-				data.EvaluatedTranscripts = make(map[string]string)
-			}
-
-			var fileData AIResultFile
-			if err := json.Unmarshal(content, &fileData); err == nil && fileData.Results != nil {
-				// Merge results
-				for k, v := range fileData.Results {
-					data.AIResults[k] = v
-					data.EvaluatedTranscripts[k] = v.OriginalTranscript
-				}
-				if fileData.EvaluatedGroundTruth != "" {
-					data.EvaluatedGroundTruth = fileData.EvaluatedGroundTruth
-				}
+			var report llm.EvalReport
+			if err := json.Unmarshal(content, &report); err == nil {
+				data.EvalReport = &report
 			}
 		} else if strings.HasSuffix(name, ".flac") {
-			// Audio file, ignore
+			// Ignore
 		} else {
-			// Transcript files (e.g. id.volc.txt, id.volc2.txt)
-			// Assuming format id.[provider].txt or pure text files
+			// Restore Transcript Logic
 			ext := filepath.Ext(name)
-			// Heuristic: if it's not one of the known json extensions and not flac
 			if ext != "" && ext != ".json" && ext != ".flac" {
-				// provider is derived from filename?
-				// e.g. "uuid.volc2" -> provider "volc2"
-				// e.g. "uuid.txt" -> provider "txt"?
-				// The previous code used `strings.TrimPrefix(ext, ".")` which returns "volc2"
 				provider := strings.TrimPrefix(ext, ".")
 				content, err := ioutil.ReadFile(path)
 				if err == nil {
-					data.Results[provider] = string(content)
+					data.Transcripts[provider] = string(content)
 				}
 			}
 		}
@@ -257,7 +231,7 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(data)
 }
 
-func resetEvalHandler(w http.ResponseWriter, r *http.Request) {
+func resetReportHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -270,36 +244,86 @@ func resetEvalHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Strictly target the file for the current model
-	filename := fmt.Sprintf("%s.%s.result.json", id, llmModelFlag)
+	filename := fmt.Sprintf("%s.%s.report.json", id, llmModelFlag)
 	path := filepath.Join(datasetDir, filename)
+	log.Printf("RESET: Request for ID=%s, Path=%s", id, path)
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		// If specific file doesn't exist, maybe it's legacy?
-		// But in strict mode we probably only want to delete what we see.
-		// Let's just try to delete and ignore not exist.
+		log.Printf("RESET: File not found, skipping delete: %s", path)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	if err := os.Remove(path); err != nil {
+		log.Printf("RESET: ERROR deleting file %s: %v", path, err)
 		http.Error(w, fmt.Sprintf("Failed to delete result file: %v", err), http.StatusInternalServerError)
 		return
 	}
+	log.Printf("RESET: Successfully deleted file: %s", path)
 
 	w.WriteHeader(http.StatusOK)
 }
 
-func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
+func saveGTHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	var req struct {
-		ID              string                    `json:"id"`
-		GroundTruth     string                    `json:"ground_truth"`
-		Results         map[string]string         `json:"results"`
-		ExistingResults map[string]llm.EvalResult `json:"existing_results"` // Ignored in favor of disk + new eval
+		ID string `json:"id"`
+		GT string `json:"ground_truth"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.ID == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	filename := filepath.Join(datasetDir, req.ID+".gt.json")
+	log.Printf("SAVE-GT: Request for ID=%s, Path=%s", req.ID, filename)
+
+	// Read existing to preserve other fields if any match GroundThroughFile
+	// Currently GroundTruthFile only has GroundTruth.
+	// We just overwrite/create.
+
+	data := struct {
+		GroundTruth string `json:"ground_truth"`
+	}{
+		GroundTruth: req.GT,
+	}
+
+	bytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		log.Printf("SAVE-GT: ERROR marshaling JSON: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+		log.Printf("SAVE-GT: ERROR writing file %s: %v", filename, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("SAVE-GT: Successfully updated GT for ID=%s", req.ID)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func runEvalHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID          string            `json:"id"`
+		GroundTruth string            `json:"ground_truth"`
+		Transcripts map[string]string `json:"transcripts"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -308,15 +332,19 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Save Ground Truth
-	evalFilename := filepath.Join(datasetDir, req.ID+".eval.json")
-	var evalData Evaluation
-	if content, err := ioutil.ReadFile(evalFilename); err == nil {
-		json.Unmarshal(content, &evalData)
+	gtFilename := filepath.Join(datasetDir, req.ID+".gt.json")
+	gtData := struct {
+		GroundTruth string `json:"ground_truth"`
+	}{
+		GroundTruth: req.GroundTruth,
 	}
-	evalData.GroundTruth = req.GroundTruth
-	evalBytes, _ := json.MarshalIndent(evalData, "", "  ")
-	ioutil.WriteFile(evalFilename, evalBytes, 0644)
-
+	if gtBytes, err := json.MarshalIndent(gtData, "", "  "); err == nil {
+		if err := ioutil.WriteFile(gtFilename, gtBytes, 0644); err != nil {
+			log.Printf("EVAL: Failed to save GT for ID=%s: %v", req.ID, err)
+		} else {
+			log.Printf("EVAL: Saved GT for ID=%s", req.ID)
+		}
+	}
 	// 2. Setup LLM Client
 	client, err := llm.NewClient(llmModelFlag)
 	if err != nil {
@@ -327,8 +355,8 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Run Evaluation
 	var newResults map[string]llm.EvalResult
-	if len(req.Results) > 0 {
-		newResults, err = evaluator.Evaluate(r.Context(), req.GroundTruth, req.Results)
+	if len(req.Transcripts) > 0 {
+		newResults, err = evaluator.Evaluate(r.Context(), req.GroundTruth, req.Transcripts)
 		if err != nil {
 			log.Printf("LLM Eval failed: %v", err)
 			http.Error(w, fmt.Sprintf("LLM evaluation failed: %v", err), http.StatusInternalServerError)
@@ -339,15 +367,17 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Determine Output File
-	resultFilename := filepath.Join(datasetDir, fmt.Sprintf("%s.%s.result.json", req.ID, llmModelFlag))
+	resultFilename := filepath.Join(datasetDir, fmt.Sprintf("%s.%s.report.json", req.ID, llmModelFlag))
+	log.Printf("EVAL: Running evaluation for ID=%s, Output=%s", req.ID, resultFilename)
 
 	// 5. Load Existing Results (stateful merge)
 	finalResults := make(map[string]llm.EvalResult)
 
 	if fileBytes, err := ioutil.ReadFile(resultFilename); err == nil {
-		var fileData AIResultFile
-		if err := json.Unmarshal(fileBytes, &fileData); err == nil && fileData.Results != nil {
-			finalResults = fileData.Results
+		var report llm.EvalReport
+		if err := json.Unmarshal(fileBytes, &report); err == nil && report.EvalResults != nil {
+			finalResults = report.EvalResults
+			log.Printf("EVAL: Loaded %d existing results for ID=%s", len(finalResults), req.ID)
 		}
 	}
 
@@ -355,16 +385,21 @@ func evaluateLLMHandler(w http.ResponseWriter, r *http.Request) {
 	for k, v := range newResults {
 		finalResults[k] = v
 	}
+	log.Printf("EVAL: Merged new results, total providers: %d", len(finalResults))
 
 	// 7. Save
-	fileData := AIResultFile{
-		EvaluatedGroundTruth: req.GroundTruth,
-		Results:              finalResults,
+	report := llm.EvalReport{
+		GroundTruth: req.GroundTruth,
+		EvalResults: finalResults,
 	}
-	data, _ := json.MarshalIndent(fileData, "", "  ")
-	ioutil.WriteFile(resultFilename, data, 0644)
+	data, _ := json.MarshalIndent(report, "", "  ")
+	if err := ioutil.WriteFile(resultFilename, data, 0644); err != nil {
+		log.Printf("EVAL: ERROR writing result file %s: %v", resultFilename, err)
+	} else {
+		log.Printf("EVAL: Successfully saved result file: %s", resultFilename)
+	}
 
-	// 8. Return merged results (could be partial if user only wanted to see what just happened, but typically specific provider results)
+	// 8. Return Report (updated to return full report now)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(finalResults)
+	json.NewEncoder(w).Encode(report)
 }

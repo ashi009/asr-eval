@@ -5,13 +5,13 @@ interface ColorConfig {
   border: string;
 }
 
-export interface ServiceConfigItem {
+export interface ASRProviderConfigItem {
   name: string;
   enabled?: boolean;
   color: ColorConfig;
 }
 
-export const SERVICE_CONFIG: Record<string, ServiceConfigItem> = {
+export const ASR_PROVIDER_CONFIG: Record<string, ASRProviderConfigItem> = {
   // Volcengine
   'volc': {
     name: 'Volcengine',
@@ -102,21 +102,21 @@ export const SERVICE_CONFIG: Record<string, ServiceConfigItem> = {
 
   // Fallback
   'default': {
-    name: 'Unknown Service',
+    name: 'Unknown Provider',
     enabled: true,
     color: { dot: 'bg-slate-500', ring: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' }
   }
 };
 
-export const getServiceConfig = (id: string): ServiceConfigItem => {
+export const getASRProviderConfig = (id: string): ASRProviderConfigItem => {
   const key = id.toLowerCase();
-  if (SERVICE_CONFIG[key]) {
-    return SERVICE_CONFIG[key];
+  if (ASR_PROVIDER_CONFIG[key]) {
+    return ASR_PROVIDER_CONFIG[key];
   }
 
   // Strict fallback behavior: Return uppercase ID with default color
   return {
     name: id.toUpperCase(),
-    color: SERVICE_CONFIG.default.color
+    color: ASR_PROVIDER_CONFIG.default.color
   };
 };

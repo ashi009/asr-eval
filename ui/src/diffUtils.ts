@@ -18,8 +18,15 @@ const segmentText = (text: string): string[] => {
 
 export type DiffChange = ArrayChange<string>;
 
-export const smartDiff = (original: string, revised: string): DiffChange[] => {
+export const smartDiff = (original: string, revised: string, ignoreCase = false): DiffChange[] => {
   const oldArr = segmentText(original);
   const newArr = segmentText(revised);
+
+  if (ignoreCase) {
+    return diffArrays(oldArr, newArr, {
+      comparator: (left, right) => left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0
+    });
+  }
+
   return diffArrays(oldArr, newArr);
 };

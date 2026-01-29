@@ -8,10 +8,16 @@ import (
 )
 
 type EvalResult struct {
-	Score              float64  `json:"score"`
-	RevisedTranscript  string   `json:"revised_transcript"`
-	Summary            []string `json:"summary"`             // Max 3 points
-	OriginalTranscript string   `json:"original_transcript"` // The transcript being evaluated
+	Score             float64  `json:"score"`
+	RevisedTranscript string   `json:"revised_transcript"`
+	Summary           []string `json:"summary"`    // Max 3 points
+	Transcript        string   `json:"transcript"` // The transcript being evaluated
+}
+
+// EvalReport represents the full evaluation state for a specific model context
+type EvalReport struct {
+	GroundTruth string                `json:"ground_truth"`
+	EvalResults map[string]EvalResult `json:"eval_results"`
 }
 
 type Evaluator struct {
@@ -92,14 +98,14 @@ Return JSON map matching the input providers. No markdown.`, groundTruth, format
 		return nil, fmt.Errorf("failed to parse JSON from LLM: %v. Content: %s", err, content)
 	}
 
-	// Transform to final EvalResult with OriginalTranscript
+	// Transform to final EvalResult with Transcript
 	results := make(map[string]EvalResult)
 	for k, v := range partialResults {
 		results[k] = EvalResult{
-			Score:              v.Score,
-			RevisedTranscript:  v.RevisedTranscript,
-			Summary:            v.Summary,
-			OriginalTranscript: transcripts[k],
+			Score:             v.Score,
+			RevisedTranscript: v.RevisedTranscript,
+			Summary:           v.Summary,
+			Transcript:        transcripts[k],
 		}
 	}
 
