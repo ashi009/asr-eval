@@ -1,7 +1,10 @@
 package main
 
 import (
+	"asr-eval/pkg/evalv2"
 	"asr-eval/pkg/llm"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,14 +16,18 @@ import (
 	"path/filepath"
 	"strings"
 
+	"google.golang.org/genai"
+
 	"github.com/joho/godotenv"
 )
 
 type Case struct {
-	ID          string            `json:"id"`
-	GroundTruth string            `json:"ground_truth"`          // From [id].gt.json
-	Transcripts map[string]string `json:"transcripts"`           // From [id].[provider].txt
-	EvalReport  *llm.EvalReport   `json:"eval_report,omitempty"` // From [id].[model].report.json
+	ID          string                     `json:"id"`
+	GroundTruth string                     `json:"ground_truth"`           // From [id].gt.json
+	Transcripts map[string]string          `json:"transcripts"`            // From [id].[provider].txt
+	EvalReport  *llm.EvalReport            `json:"eval_report,omitempty"`  // From [id].[model].report.json
+	EvalContext *evalv2.ContextResponse    `json:"eval_context,omitempty"` // From [id].gt.v2.json
+	ReportV2    *evalv2.EvaluationResponse `json:"report_v2,omitempty"`    // From [id].report.v2.json
 }
 
 var (
@@ -61,6 +68,10 @@ func main() {
 	// But frontend calls /reset-eval. I should update frontend if I change endpoint.
 	// Let's keep endpoint for now or change it?
 	// Recommendation: Change endpoint to /api/reset-report for consistency.
+
+	http.HandleFunc("/api/evaluate-v2", evaluateV2Handler)
+	http.HandleFunc("/api/generate-context", generateContextHandler)
+	http.HandleFunc("/api/save-context", saveContextHandler)
 
 	http.HandleFunc("/api/reset-eval", resetReportHandler)
 	http.HandleFunc("/api/save-gt", saveGTHandler)
@@ -205,6 +216,24 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 			if err := json.Unmarshal(content, &gt); err == nil {
 				data.GroundTruth = gt.GroundTruth
 			}
+		} else if name == id+".gt.v2.json" {
+			content, _ := ioutil.ReadFile(path)
+			var ctx evalv2.ContextResponse
+			if err := json.Unmarshal(content, &ctx); err == nil {
+				data.EvalContext = &ctx
+			}
+		} else if name == id+".report.v2.json" {
+			// v2 reports are also model-specific? User didn't specify, but v1 is.
+			// Let's assume v2 report is also likely model-specific or maybe just one global report?
+			// The design says "[id].report.v2.json", implies single report or maybe we should use model?
+			// Giving that v2 is "Evaluation V2", let's stick to one file for now as per design text.
+			// But wait, if we change models we might want different reports.
+			// However, for now let's follow the ".report.v2.json" naming from design.
+			content, _ := ioutil.ReadFile(path)
+			var report evalv2.EvaluationResponse
+			if err := json.Unmarshal(content, &report); err == nil {
+				data.ReportV2 = &report
+			}
 		} else if name == id+targetSuffix {
 			// STRICT filtering: Only read results for the ACTIVE model
 			content, _ := ioutil.ReadFile(path)
@@ -218,7 +247,7 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Restore Transcript Logic
 			ext := filepath.Ext(name)
-			if ext != "" && ext != ".json" && ext != ".flac" {
+			if ext != "" && ext != ".json" && ext != ".flac" && !strings.Contains(ext, "v2") { // Avoid reading v2 json as transcript
 				provider := strings.TrimPrefix(ext, ".")
 				content, err := ioutil.ReadFile(path)
 				if err == nil {
@@ -403,4 +432,131 @@ func runEvalHandler(w http.ResponseWriter, r *http.Request) {
 	// 8. Return Report (updated to return full report now)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(report)
+}
+
+func generateContextHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID          string            `json:"id"`
+		GroundTruth string            `json:"ground_truth"`
+		Transcripts map[string]string `json:"transcripts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Save GT first (optional but good for consistency)
+	if req.GroundTruth != "" {
+		gtFilename := filepath.Join(datasetDir, req.ID+".gt.json")
+		gtData := struct {
+			GroundTruth string `json:"ground_truth"`
+		}{GroundTruth: req.GroundTruth}
+		if bytes, err := json.MarshalIndent(gtData, "", "  "); err == nil {
+			_ = ioutil.WriteFile(gtFilename, bytes, 0644)
+		}
+	}
+
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	client, err := genai.NewClient(r.Context(), &genai.ClientConfig{APIKey: apiKey})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
+		return
+	}
+	generator := evalv2.NewGenerator(client, llmModelFlag)
+
+	audioPath := filepath.Join(datasetDir, req.ID+".flac")
+	ctxResp, err := generator.GenerateContext(r.Context(), audioPath, req.GroundTruth, req.Transcripts)
+	if err != nil {
+		log.Printf("GEN-CTX: Error %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Save context
+	filename := filepath.Join(datasetDir, req.ID+".gt.v2.json")
+	bytes, _ := json.MarshalIndent(ctxResp, "", "  ")
+	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+		http.Error(w, "Failed to save context file", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ctxResp)
+}
+
+func saveContextHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID      string                  `json:"id"`
+		Context *evalv2.ContextResponse `json:"context"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	filename := filepath.Join(datasetDir, req.ID+".gt.v2.json")
+	bytes, _ := json.MarshalIndent(req.Context, "", "  ")
+	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+		http.Error(w, "Failed to save context", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func evaluateV2Handler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ID          string                  `json:"id"`
+		EvalContext *evalv2.ContextResponse `json:"eval_context"`
+		Transcripts map[string]string       `json:"transcripts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	client, err := genai.NewClient(r.Context(), &genai.ClientConfig{APIKey: apiKey})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
+		return
+	}
+	evaluator := evalv2.NewEvaluator(client, llmModelFlag)
+
+	resp, err := evaluator.Evaluate(r.Context(), req.EvalContext, req.Transcripts)
+	if err != nil {
+		log.Printf("EVAL-V2: Error %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Calculate Hash and Embed Snapshot
+	ctxBytes, _ := json.Marshal(req.EvalContext)
+	hash := md5.Sum(ctxBytes)
+	resp.ContextHash = hex.EncodeToString(hash[:])
+	resp.ContextSnapshot = *req.EvalContext
+
+	// Save Report
+	filename := filepath.Join(datasetDir, req.ID+".report.v2.json")
+	bytes, _ := json.MarshalIndent(resp, "", "  ")
+	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+		http.Error(w, "Failed to save report", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
