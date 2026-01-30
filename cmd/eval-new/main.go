@@ -56,8 +56,7 @@ func main() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	generator := evalv2.NewGenerator(client, modelContext)
-	evaluator := evalv2.NewEvaluator(client, modelEval)
+	evaluator := evalv2.NewEvaluator(client, modelContext, modelEval)
 
 	cases, err := findCases(datasetDir, caseID)
 	if err != nil {
@@ -75,7 +74,7 @@ func main() {
 	for w := 0; w < concurrency; w++ {
 		go func(id int) {
 			for c := range jobs {
-				processCase(ctx, c, generator, evaluator, forceContext) // Note: reusing 'force' flag for context only as per request
+				processCase(ctx, c, evaluator, forceContext) // Note: reusing 'force' flag for context only as per request
 				results <- true
 			}
 		}(w)
@@ -188,7 +187,7 @@ func findCases(root, targetID string) ([]*Case, error) {
 	return cases, nil
 }
 
-func processCase(ctx context.Context, c *Case, generator *evalv2.Generator, evaluator *evalv2.Evaluator, force bool) {
+func processCase(ctx context.Context, c *Case, evaluator *evalv2.Evaluator, force bool) {
 	log.Printf("Processing Case: %s", c.ID)
 
 	// Derive Audio Path
@@ -215,7 +214,7 @@ func processCase(ctx context.Context, c *Case, generator *evalv2.Generator, eval
 	if shouldGenerate {
 		log.Println(" > Generating Context...")
 		var err error
-		contextResp, err = generator.GenerateContext(ctx, audioPath, c.GroundTruth, c.Transcripts)
+		contextResp, err = evaluator.GenerateContext(ctx, audioPath, c.GroundTruth, c.Transcripts)
 		if err != nil {
 			log.Printf("ERROR Generating Context for %s: %v", c.ID, err)
 			return

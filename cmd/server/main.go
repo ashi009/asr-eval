@@ -467,7 +467,11 @@ func generateContextHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
 		return
 	}
-	generator := evalv2.NewGenerator(client, llmModelFlag)
+	// Same client, same model for now based on flags?
+	// In generateContextHandler, it uses llmModelFlag which is the global flag.
+	// The original code used evalv2.NewGenerator(client, llmModelFlag).
+	// So we change to evalv2.NewEvaluator(client, llmModelFlag).
+	generator := evalv2.NewEvaluator(client, llmModelFlag, llmModelFlag)
 
 	audioPath := filepath.Join(datasetDir, req.ID+".flac")
 	ctxResp, err := generator.GenerateContext(r.Context(), audioPath, req.GroundTruth, req.Transcripts)
@@ -534,7 +538,7 @@ func evaluateV2Handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
 		return
 	}
-	evaluator := evalv2.NewEvaluator(client, llmModelFlag)
+	evaluator := evalv2.NewEvaluator(client, llmModelFlag, llmModelFlag)
 
 	resp, err := evaluator.Evaluate(r.Context(), req.EvalContext, req.Transcripts)
 	if err != nil {

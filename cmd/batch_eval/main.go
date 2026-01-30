@@ -60,7 +60,7 @@ func main() {
 	worker := func(id int) {
 		defer wg.Done()
 
-		evaluator := evalv2.NewEvaluator(client, *llmModel)
+		evaluator := evalv2.NewEvaluator(client, "", *llmModel)
 
 		for ctxFileName := range paramsChan {
 			id := strings.TrimSuffix(ctxFileName, ".gt.v2.json")

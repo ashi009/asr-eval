@@ -71,8 +71,10 @@ type ModelEvaluation struct {
 
 // EvaluationResponse represents the output of Step 2 ([id].report.v2.json)
 type EvaluationResponse struct {
-	GroundTruth string                     `json:"ground_truth"`
-	Evaluations map[string]ModelEvaluation `json:"evaluations"`
+	GroundTruth     string                     `json:"ground_truth"`
+	Evaluations     map[string]ModelEvaluation `json:"evaluations"`
+	ContextHash     string                     `json:"context_hash,omitempty"`
+	ContextSnapshot ContextResponse            `json:"context_snapshot,omitempty"`
 }
 
 // CheckpointResult holds the pass/fail status for a single checkpoint

@@ -67,7 +67,7 @@ func main() {
 		// But to be safe and clean, let's just make one generator per worker or share it.
 		// Generator struct in types.go: type Generator struct { client *genai.Client; model string }
 		// Read-only except internal state of client which is thread safe.
-		localGenerator := evalv2.NewGenerator(client, *llmModel)
+		localGenerator := evalv2.NewEvaluator(client, *llmModel, "")
 
 		for flacName := range paramsChan {
 			id := strings.TrimSuffix(flacName, ".flac")
