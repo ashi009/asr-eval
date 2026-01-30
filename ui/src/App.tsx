@@ -166,6 +166,9 @@ function Layout() {
   }, []);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+  const handleLinkClick = () => {
+    if (isOverlay) setSidebarOpen(false);
+  };
 
   return (
     <div className="flex h-screen bg-background-light dark:bg-background-dark font-display text-slate-900 overflow-hidden relative">
@@ -226,6 +229,7 @@ function Layout() {
                   <li key={c.id} className="min-w-0">
                     <NavLink
                       to={`/case/${c.id}`}
+                      onClick={handleLinkClick}
                       className={({ isActive }) => `block w-full text-left px-3 py-2 rounded text-sm font-mono flex justify-between
                         ${isActive ? 'bg-white shadow ring-1 ring-slate-200' : 'hover:bg-slate-200/50 text-slate-600'}
                       `}
@@ -249,6 +253,7 @@ function Layout() {
                     <li key={c.id}>
                       <NavLink
                         to={`/case/${c.id}`}
+                        onClick={handleLinkClick}
                         className={({ isActive }) => `block w-full text-left px-3 py-2 rounded text-sm font-mono flex justify-between items-center group
                           ${isActive ? 'bg-white shadow ring-1 ring-slate-200 border-l-2 border-primary' : 'hover:bg-slate-200/50 text-slate-600 border-l-2 border-transparent'}
                         `}
@@ -676,6 +681,7 @@ function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProce
                       if (!res.ok) throw new Error("Failed");
                       const fresh = await fetch(`/api/case?id=${currentCase.id}&t=${Date.now()}`).then(r => r.json());
                       setCurrentCase({ ...fresh, ground_truth: currentGT });
+                      setSelectedProviders(initSelection(fresh));
                       if (currentGT?.trim()) setIsInputExpanded(false);
                       setShowResolveModal(false);
                     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -826,7 +832,7 @@ function EvalReportView({ kase, selectedProviders, onToggleProvider, onSelectAll
                 onClick={() => setSortBy('name')}
                 className={`hover:text-slate-600 cursor-pointer ${sortBy === 'name' ? 'text-slate-700' : ''}`}
               >
-                SERVICE
+                PROVIDER
               </button>
               <span>/</span>
               <button
