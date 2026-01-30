@@ -30,8 +30,13 @@ func main() {
 	flag.StringVar(&caseID, "case", "", "Specific case ID to process (optional)")
 	flag.StringVar(&modelContext, "gt-analysis-model", "gemini-3-pro-preview", "Model for Context Generation (Step 1)")
 	flag.StringVar(&modelEval, "eval-model", "gemini-3-flash-preview", "Model for Evaluation (Step 2)")
-	var forceGeneration bool
-	flag.BoolVar(&forceGeneration, "force", false, "Force regeneration of Context (Step 1)")
+	// Additional flags
+	var concurrency int
+	flag.IntVar(&concurrency, "concurrency", 1, "Number of concurrent workers")
+
+	var forceContext bool
+	flag.BoolVar(&forceContext, "force-context", false, "Force regeneration of Context (Step 1)")
+
 	flag.Parse()
 
 	_ = godotenv.Load()
@@ -60,10 +65,33 @@ func main() {
 	}
 
 	log.Printf("Found %d cases to process", len(cases))
+	log.Printf("Concurrency: %d, Force Context: %v", concurrency, forceContext)
 
-	for _, c := range cases {
-		processCase(ctx, c, generator, evaluator, forceGeneration)
+	// Worker Pool Pattern
+	jobs := make(chan *Case, len(cases))
+	results := make(chan bool, len(cases))
+
+	// Start Workers
+	for w := 0; w < concurrency; w++ {
+		go func(id int) {
+			for c := range jobs {
+				processCase(ctx, c, generator, evaluator, forceContext) // Note: reusing 'force' flag for context only as per request
+				results <- true
+			}
+		}(w)
 	}
+
+	// Send jobs
+	for _, c := range cases {
+		jobs <- c
+	}
+	close(jobs)
+
+	// Wait for results
+	for i := 0; i < len(cases); i++ {
+		<-results
+	}
+	log.Println("All cases processed.")
 }
 
 type Case struct {
