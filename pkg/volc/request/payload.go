@@ -39,6 +39,7 @@ type RequestMeta struct {
 	EnableDDC       bool       `json:"enable_ddc,omitempty"`
 	ShowUtterances  bool       `json:"show_utterances"`
 	EnableNonstream bool       `json:"enable_nonstream"`
+	ResultType      string     `json:"result_type,omitempty"`
 	Corpus          CorpusMeta `json:"corpus,omitempty"`
 }
 
@@ -55,6 +56,13 @@ func SetEnableNonstream(enabled bool) {
 	currentEnableNonstream = enabled
 }
 
+// currentResultType is the globally configured result type (full or single)
+var currentResultType = "full"
+
+func SetResultType(t string) {
+	currentResultType = t
+}
+
 func NewFullClientRequest(meta *RequestMeta) []byte {
 	var request bytes.Buffer
 	request.Write(DefaultHeader().WithMessageTypeSpecificFlags(common.POS_SEQUENCE).toBytes())
@@ -66,6 +74,7 @@ func NewFullClientRequest(meta *RequestMeta) []byte {
 		EnableDDC:       true,
 		ShowUtterances:  true,
 		EnableNonstream: currentEnableNonstream,
+		ResultType:      currentResultType,
 	}
 	if meta != nil {
 		// Merge: only override Corpus from provided meta

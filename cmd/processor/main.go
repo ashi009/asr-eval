@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -40,11 +42,13 @@ func main() {
 	if *realtimeFlag {
 		url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
 		request.SetEnableNonstream(true)
-		log.Println("Using realtime streaming API (enable_nonstream=true)")
+		request.SetResultType("single")
+		log.Println("Using realtime streaming API (enable_nonstream=true, result_type=single)")
 	} else {
 		url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
 		request.SetEnableNonstream(false)
-		log.Println("Using nostream API (enable_nonstream=false)")
+		request.SetResultType("full")
+		log.Println("Using nostream API (enable_nonstream=false, result_type=full)")
 	}
 
 	// Optional: Allow overriding URL from env
@@ -123,7 +127,7 @@ func main() {
 			}
 
 			for file := range fileChan {
-				processFile(c, file, *extFlag)
+				processFile(c, file, *extFlag, *realtimeFlag)
 			}
 		}(i)
 	}
@@ -168,7 +172,13 @@ func getUnprocessedFlacFiles(root string, ext string, limit int) ([]string, erro
 	return files, nil
 }
 
-func processFile(c *client.AsrWsClient, filePath string, ext string) {
+type StreamEntry struct {
+	Timestamp int64  `json:"t"`
+	Final     bool   `json:"f,omitempty"`
+	Text      string `json:"s"`
+}
+
+func processFile(c *client.AsrWsClient, filePath string, ext string, realtime bool) {
 	fmt.Printf("Processing %s...\n", filePath)
 
 	resChan := make(chan *response.AsrResponse)
@@ -177,22 +187,24 @@ func processFile(c *client.AsrWsClient, filePath string, ext string) {
 
 	var finalTranscript string
 	var mu sync.Mutex
-	// Capture all text to ensure we get everything if it's segmented
-	// But usually "final" results replace previous ones in streaming?
-	// In this SDK demo, it just prints everything.
-	// We will concatenate all non-empty results if they seem to be segments.
-	// Or maybe just the last one has the full text?
-	// Let's assume cumulative for now as per typical streaming ASR, or check "IsLastPackage".
-	// Re-reading usage: often ASR sends partials then a final.
-	// If `Utterances` are present, they are final.
-	// Let's append text that comes in. If it repeats, we might have duplication.
-	// To be safe, let's just use the last result's Text if result_type=full.
-	// The SDK defaults seem to imply "ShowUtterances: true" and "EnableNonstream: false".
-	// If it's streaming, we might get updates.
-	// Simplest approach: Just save the `Text` from the LAST message that has it.
+
+	startTime := time.Now()
 
 	go func() {
 		defer wg.Done()
+
+		var streamFile *os.File
+		var err error
+		if realtime {
+			streamPath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + ext + ".stream.json"
+			streamFile, err = os.Create(streamPath)
+			if err != nil {
+				log.Printf("Failed to create stream file %s: %v", streamPath, err)
+			} else {
+				defer streamFile.Close()
+			}
+		}
+
 		for res := range resChan {
 			if res.Code != 0 {
 				fmt.Printf("Error response: Code=%d, Error=%s\n", res.Code, res.PayloadMsg.Error)
@@ -200,9 +212,60 @@ func processFile(c *client.AsrWsClient, filePath string, ext string) {
 			}
 			if res.PayloadMsg != nil && res.PayloadMsg.Result.Text != "" {
 				mu.Lock()
-				finalTranscript = res.PayloadMsg.Result.Text
-				log.Printf("Updated transcript (len=%d): %s...", len(finalTranscript), string([]rune(finalTranscript)[:min(10, len([]rune(finalTranscript)))]))
+				if !realtime {
+					finalTranscript = res.PayloadMsg.Result.Text
+				}
 				mu.Unlock()
+
+				msg := res.PayloadMsg
+				log.Printf("Updated transcript (len=%d). Utterances: %d", len(finalTranscript), len(msg.Result.Utterances))
+
+				if streamFile != nil || realtime { // Process utterances for both stream file and final transcript accumulation
+					currentUtterances := msg.Result.Utterances
+					var partialParts []string
+
+					for _, u := range currentUtterances {
+						if u.Definite {
+							// Finalized segment
+							if u.Text != "" {
+								if streamFile != nil {
+									entry := StreamEntry{
+										Timestamp: time.Since(startTime).Milliseconds(),
+										Final:     true,
+										Text:      u.Text,
+									}
+									line, _ := json.Marshal(entry)
+									_, _ = streamFile.Write(line)
+									_, _ = streamFile.WriteString("\n")
+								}
+								// Accumulate to final transcript in realtime mode
+								mu.Lock()
+								finalTranscript += u.Text
+								mu.Unlock()
+
+								log.Printf("Finalized utterance: %s", u.Text)
+							}
+						} else {
+							// Active indefinite segment
+							partialParts = append(partialParts, u.Text)
+						}
+					}
+
+					// Stream aggregated partial text
+					if streamFile != nil {
+						partialText := strings.Join(partialParts, "")
+						if partialText != "" {
+							entry := StreamEntry{
+								Timestamp: time.Since(startTime).Milliseconds(),
+								Final:     false,
+								Text:      partialText,
+							}
+							line, _ := json.Marshal(entry)
+							_, _ = streamFile.Write(line)
+							_, _ = streamFile.WriteString("\n")
+						}
+					}
+				}
 			}
 		}
 	}()
@@ -228,11 +291,4 @@ func processFile(c *client.AsrWsClient, filePath string, ext string) {
 		// Don't overwrite if empty unless sure.
 		fmt.Printf("No transcript received for %s\n", filePath)
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
