@@ -45,7 +45,7 @@ func (g *Generator) GenerateContext(ctx context.Context, audioPath string, groun
 	}
 
 	prompt := fmt.Sprintf(`You are an expert ASR Data Analyst.
-Analyze the provided Audio, Ground Truth (GT), and Candidate Transcripts to create a "Context for Evaluation". GT may contain annotations for the previous word/phrase with "(annotation)" or "<annotation>".
+Analyze the provided Audio, Ground Truth (GT), and Candidate Transcripts to create a "Context for Evaluation". GT may contain annotations for the previous word/phrase in the format of "(annotation)" or "<annotation>".
 
 Ground Truth: %s
 
@@ -53,12 +53,16 @@ Candidate Transcripts:
 %s
 
 Task:
-1. Define the **Business Goal**: concise summary of the user's intent based solely on the GT.
+1. Define the **Business Goal**: concise summary of the user's intent based **STRICTLY AND SOLELY** on the provided Ground Truth (GT) text.
+   - Do **NOT** use information from the Audio or Transcripts for this field.
+   - Even if the GT seems incomplete or contradicts the Audio, you **MUST** describe the intent derived **only** from the GT text.
+   - This goal serves as the "Intended Request" baseline.
 2. key **Audio Reality Inference**: Reconstruct the full audio text including fillers, stutters, and hesitation sounds that might be missing in GT but present in Audio. This is the "Phonetic Truth". Non-GT transcripts may contain phonetic simliar gibberish due to code-change, don't use them verbatim, but infer the correct words.
 3. Estimate **Total Token Count**: approximate count of tokens in the audio reality.
 4. Define **Checkpoints** (Hierarchical):
    - Analyze the GT and Business intent.
-   - Break down the GT into critical segments.
+   - Break down the GT into segments, ensuring **EVERY** sentence and phrase in the GT is covered by at least one checkpoint.
+   - **Complete Coverage Policy**: Do not skip parts of the GT. If a sentence is trivial, assign it to Tier 3 with very low weight (e.g., 0.05), but it MUST include it.
    - Provide a unique ID (S1, S2...), the text segment, tier (1,2,3), weight (0.0-1.0), and rationale.
 
 ### Guidance for Tiers and Weights
@@ -124,6 +128,9 @@ Follow a **Dynamic Balance** where Total Weight = 1.0.
 			resp.UsageMetadata.CandidatesTokenCount,
 			resp.UsageMetadata.TotalTokenCount)
 	}
+
+	b, _ := resp.MarshalJSON()
+	fmt.Printf("%s\n", b)
 
 	respStr := resp.Text()
 	var result ContextResponse
