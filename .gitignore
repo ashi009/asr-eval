@@ -11,3 +11,5 @@ tools/
 code.html
 static/
 tmp/
+eval-tool
+migrate-results
