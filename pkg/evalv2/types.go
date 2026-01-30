@@ -19,6 +19,8 @@ type MetaInfo struct {
 	AudioRealityInference   string `json:"audio_reality_inference"`
 	TotalTokenCountEstimate int    `json:"total_token_count_estimate"`
 	GroundTruth             string `json:"ground_truth"` // LLM Intermediate Structs for Generation (Arrays instead of Maps)
+	QuestionableGT          bool   `json:"questionable_gt"`
+	QuestionableReason      string `json:"questionable_reason"`
 }
 
 type CheckpointResultLLM struct {
@@ -69,6 +71,7 @@ type ModelEvaluation struct {
 
 // EvaluationResponse represents the output of Step 2 ([id].report.v2.json)
 type EvaluationResponse struct {
+	GroundTruth string                     `json:"ground_truth"`
 	Evaluations map[string]ModelEvaluation `json:"evaluations"`
 }
 
@@ -92,8 +95,10 @@ func GetContextResponseSchema() *genai.Schema {
 					"business_goal":              {Type: genai.TypeString},
 					"audio_reality_inference":    {Type: genai.TypeString},
 					"total_token_count_estimate": {Type: genai.TypeInteger},
+					"questionable_gt":            {Type: genai.TypeBoolean},
+					"questionable_reason":        {Type: genai.TypeString},
 				},
-				Required: []string{"business_goal", "audio_reality_inference", "total_token_count_estimate"},
+				Required: []string{"business_goal", "audio_reality_inference", "total_token_count_estimate", "questionable_gt"},
 			},
 			"checkpoints": {
 				Type: genai.TypeArray,

@@ -64,6 +64,10 @@ Task:
    - Break down the GT into segments, ensuring **EVERY** sentence and phrase in the GT is covered by at least one checkpoint.
    - **Complete Coverage Policy**: Do not skip parts of the GT. If a sentence is trivial, assign it to Tier 3 with very low weight (e.g., 0.05), but it MUST include it.
    - Provide a unique ID (S1, S2...), the text segment, tier (1,2,3), weight (0.0-1.0), and rationale.
+5. **Questionable GT?**:
+   - Do you think the provided Ground Truth is questionable (e.g., contains obvious typos, missing words, or is completely wrong compared to the Audio/Audio Reality)?
+   - If yes, set "questionable_gt" to true and provide a reason in "questionable_reason".
+
 
 ### Guidance for Tiers and Weights
 
