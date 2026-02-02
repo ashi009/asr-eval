@@ -18,6 +18,14 @@ Each commit should represent ONE logical change. Never combine unrelated changes
 
 Follow the [Go project commit message style](https://go.dev/wiki/CommitMessage).
 
+### Consistency Check
+
+Before committing, check recent commits for the same package to ensure consistent naming (e.g., `pkg/evalv2` vs `evalv2`).
+
+```bash
+git log --oneline -- <path/to/package>
+```
+
 ### Description Format
 
 > Notably, for the subject (the first line of description):
