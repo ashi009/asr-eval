@@ -116,12 +116,6 @@ type generateContextPromptData struct {
 	Transcripts map[string]string
 }
 
-// evaluatePromptData holds data for the evaluation prompt
-type evaluatePromptData struct {
-	EvalContext *EvalContext
-	Transcripts map[string]string
-}
-
 // buildGenerateContextPrompt constructs the prompt string for context generation
 func buildGenerateContextPrompt(data generateContextPromptData) (string, error) {
 	var buf bytes.Buffer
@@ -129,6 +123,12 @@ func buildGenerateContextPrompt(data generateContextPromptData) (string, error) 
 		return "", fmt.Errorf("failed to execute genContext template: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// evaluatePromptData holds data for the evaluation prompt
+type evaluatePromptData struct {
+	EvalContext *EvalContext
+	Transcripts map[string]string
 }
 
 // buildEvaluatePrompt constructs the prompt string for evaluation

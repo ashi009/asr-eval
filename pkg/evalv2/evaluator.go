@@ -111,6 +111,26 @@ func (e *Evaluator) Evaluate(ctx context.Context, contextData *EvalContext, tran
 		},
 	}
 
+	// llmCheckpointResult is the raw result from LLM (unexported)
+	type llmCheckpointResult struct {
+		ID       string           `json:"id"`
+		Status   CheckpointStatus `json:"status" jsonscheme:"enum:Pass,Fail,Partial"`
+		Detected string           `json:"detected"`         // text segment identified
+		Reason   string           `json:"reason,omitempty"` // Reason for failure
+	}
+
+	// llmEvalResult is the raw result from LLM for a transcript (unexported)
+	type llmEvalResult struct {
+		Provider          string                `json:"provider"`
+		RevisedTranscript string                `json:"revised_transcript"`
+		Metrics           EvalMetrics           `json:"metrics"`
+		CheckpointResults []llmCheckpointResult `json:"checkpoint_results"`
+		Summary           []string              `json:"summary"`
+	}
+
+	// llmEvalReport is the raw array from LLM (unexported)
+	type llmEvalReport []llmEvalResult
+
 	var resultLLM llmEvalReport
 	usage, err := e.generateJSON(ctx, e.evalModel, contents, config, &resultLLM)
 	if err != nil {

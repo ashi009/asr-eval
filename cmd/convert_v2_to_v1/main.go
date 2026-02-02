@@ -46,7 +46,7 @@ func main() {
 
 			// Map to V1
 			v1Report := llm.EvalReport{
-				GroundTruth: v2Resp.GroundTruth,
+				GroundTruth: v2Resp.ContextSnapshot.Meta.GroundTruth,
 				EvalResults: make(map[string]llm.EvalResult),
 			}
 
