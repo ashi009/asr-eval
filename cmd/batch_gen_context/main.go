@@ -138,10 +138,14 @@ func main() {
 			}
 
 			// 3. Generate
-			resp, err := localGenerator.GenerateContext(context.Background(), filepath.Join(*datasetDir, flacName), gt, transcripts)
+			resp, usage, err := localGenerator.GenerateContext(context.Background(), filepath.Join(*datasetDir, flacName), gt, transcripts)
 			if err != nil {
 				log.Printf("[%s] ERROR: %v", id, err)
 				continue
+			}
+
+			if usage != nil {
+				log.Printf("[%s] Usage: %d tokens", id, usage.TotalTokenCount)
 			}
 
 			// 4. Save

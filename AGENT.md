@@ -42,3 +42,5 @@ The project consists of a Go backend and a React (Vite) frontend.
 | **Ground Truth (GT)** | The verified, correct transcript text, stored in `.gt.json`. Used as the reference for evaluation. |
 | **EvalResult** | The evaluation outcome for a *single* ASR Provider's transcript, containing a score, revised version, and summary. |
 | **EvalReport** | The collection of all `EvalResult`s for a Case, plus the snapshot of the Ground Truth used effectively during that evaluation run. Stored in `.report.json`. |
+| **EvalContext** | The generated context used to evaluate a case. Contains metadata (`ContextMeta`) and a set of `Checkpoint`s derived from Ground Truth. Stored in `.gt.v2.json`. |
+| **Checkpoint** | A specific, verifiable criterion derived from the Ground Truth (e.g., "Must mention 'refund'"). Used to score transcripts. |

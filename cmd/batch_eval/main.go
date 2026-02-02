@@ -75,7 +75,7 @@ func main() {
 				continue
 			}
 
-			var ctxResp evalv2.ContextResponse
+			var ctxResp evalv2.EvalContext
 			if err := json.Unmarshal(ctxContent, &ctxResp); err != nil {
 				log.Printf("[%s] Error parsing context: %v", id, err)
 				continue
@@ -189,12 +189,16 @@ func main() {
 			// Evaluate
 			// We need a timeout context?
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			result, err := evaluator.Evaluate(ctx, &ctxResp, transcripts)
+			result, usage, err := evaluator.Evaluate(ctx, &ctxResp, transcripts)
 			cancel()
 
 			if err != nil {
 				log.Printf("[%s] Eval Failed: %v", id, err)
 				continue
+			}
+
+			if usage != nil {
+				log.Printf("[%s] Usage: %d tokens", id, usage.TotalTokenCount)
 			}
 
 			// Save Report

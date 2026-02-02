@@ -38,7 +38,7 @@ func main() {
 				continue
 			}
 
-			var v2Resp evalv2.EvaluationResponse
+			var v2Resp evalv2.EvalReport
 			if err := json.Unmarshal(content, &v2Resp); err != nil {
 				log.Printf("[%s] Failed to parse V2 report: %v", id, err)
 				continue
@@ -50,7 +50,7 @@ func main() {
 				EvalResults: make(map[string]llm.EvalResult),
 			}
 
-			for provider, eval := range v2Resp.Evaluations {
+			for provider, eval := range v2Resp.Results {
 				v1Report.EvalResults[provider] = llm.EvalResult{
 					Score:             eval.Metrics.SScore,
 					RevisedTranscript: eval.RevisedTranscript,

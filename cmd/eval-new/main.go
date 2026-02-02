@@ -194,7 +194,7 @@ func processCase(ctx context.Context, c *Case, evaluator *evalv2.Evaluator, forc
 	audioPath := filepath.Join(datasetDir, c.ID+".flac")
 
 	// Step 1: Context Generation
-	var contextResp *evalv2.ContextResponse
+	var contextResp *evalv2.EvalContext
 	ctxFile := filepath.Join(datasetDir, c.ID+".gt.v2.json")
 
 	// Check if already exists and not forced
@@ -214,10 +214,14 @@ func processCase(ctx context.Context, c *Case, evaluator *evalv2.Evaluator, forc
 	if shouldGenerate {
 		log.Println(" > Generating Context...")
 		var err error
-		contextResp, err = evaluator.GenerateContext(ctx, audioPath, c.GroundTruth, c.Transcripts)
+		var usage *genai.GenerateContentResponseUsageMetadata
+		contextResp, usage, err = evaluator.GenerateContext(ctx, audioPath, c.GroundTruth, c.Transcripts)
 		if err != nil {
 			log.Printf("ERROR Generating Context for %s: %v", c.ID, err)
 			return
+		}
+		if usage != nil {
+			log.Printf(" > Context Usage: %d tokens", usage.TotalTokenCount)
 		}
 		// Save
 		bytes, _ := json.MarshalIndent(contextResp, "", "  ")
@@ -227,10 +231,13 @@ func processCase(ctx context.Context, c *Case, evaluator *evalv2.Evaluator, forc
 
 	// Step 2: Evaluation
 	log.Println(" > Running Evaluation...")
-	evalResp, err := evaluator.Evaluate(ctx, contextResp, c.Transcripts)
+	evalResp, usage, err := evaluator.Evaluate(ctx, contextResp, c.Transcripts)
 	if err != nil {
 		log.Printf("ERROR Evaluating %s: %v", c.ID, err)
 		return
+	}
+	if usage != nil {
+		log.Printf(" > Evaluation Usage: %d tokens", usage.TotalTokenCount)
 	}
 
 	// Save Report V2
@@ -246,7 +253,7 @@ func processCase(ctx context.Context, c *Case, evaluator *evalv2.Evaluator, forc
 		EvalResults: make(map[string]llm.EvalResult),
 	}
 
-	for provider, eval := range evalResp.Evaluations {
+	for provider, eval := range evalResp.Results {
 		// Formula: P^0.7 * S^0.3
 		// Check for 0 values to avoid NaN/Invalid math if necessary?
 		// Typically scores are 0.0-1.0. Pow(0, 0.3) is 0.

@@ -22,12 +22,12 @@ import (
 )
 
 type Case struct {
-	ID          string                     `json:"id"`
-	GroundTruth string                     `json:"ground_truth"`           // From [id].gt.json
-	Transcripts map[string]string          `json:"transcripts"`            // From [id].[provider].txt
-	EvalReport  *llm.EvalReport            `json:"eval_report,omitempty"`  // From [id].[model].report.json
-	EvalContext *evalv2.ContextResponse    `json:"eval_context,omitempty"` // From [id].gt.v2.json
-	ReportV2    *evalv2.EvaluationResponse `json:"report_v2,omitempty"`    // From [id].report.v2.json
+	ID          string              `json:"id"`
+	GroundTruth string              `json:"ground_truth"`           // From [id].gt.json
+	Transcripts map[string]string   `json:"transcripts"`            // From [id].[provider].txt
+	EvalReport  *llm.EvalReport     `json:"eval_report,omitempty"`  // From [id].[model].report.json
+	EvalContext *evalv2.EvalContext `json:"eval_context,omitempty"` // From [id].gt.v2.json
+	ReportV2    *evalv2.EvalReport  `json:"report_v2,omitempty"`    // From [id].report.v2.json
 }
 
 var (
@@ -218,7 +218,7 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if name == id+".gt.v2.json" {
 			content, _ := ioutil.ReadFile(path)
-			var ctx evalv2.ContextResponse
+			var ctx evalv2.EvalContext
 			if err := json.Unmarshal(content, &ctx); err == nil {
 				data.EvalContext = &ctx
 			}
@@ -230,7 +230,7 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 			// But wait, if we change models we might want different reports.
 			// However, for now let's follow the ".report.v2.json" naming from design.
 			content, _ := ioutil.ReadFile(path)
-			var report evalv2.EvaluationResponse
+			var report evalv2.EvalReport
 			if err := json.Unmarshal(content, &report); err == nil {
 				data.ReportV2 = &report
 			}
@@ -474,11 +474,14 @@ func generateContextHandler(w http.ResponseWriter, r *http.Request) {
 	generator := evalv2.NewEvaluator(client, llmModelFlag, llmModelFlag)
 
 	audioPath := filepath.Join(datasetDir, req.ID+".flac")
-	ctxResp, err := generator.GenerateContext(r.Context(), audioPath, req.GroundTruth, req.Transcripts)
+	ctxResp, usage, err := generator.GenerateContext(r.Context(), audioPath, req.GroundTruth, req.Transcripts)
 	if err != nil {
 		log.Printf("GEN-CTX: Error %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if usage != nil {
+		log.Printf("GEN-CTX: Usage: %d tokens", usage.TotalTokenCount)
 	}
 
 	// Save context
@@ -499,8 +502,8 @@ func saveContextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		ID      string                  `json:"id"`
-		Context *evalv2.ContextResponse `json:"context"`
+		ID      string              `json:"id"`
+		Context *evalv2.EvalContext `json:"context"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -523,9 +526,9 @@ func evaluateV2Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ID          string                  `json:"id"`
-		EvalContext *evalv2.ContextResponse `json:"eval_context"`
-		Transcripts map[string]string       `json:"transcripts"`
+		ID          string              `json:"id"`
+		EvalContext *evalv2.EvalContext `json:"eval_context"`
+		Transcripts map[string]string   `json:"transcripts"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -540,11 +543,14 @@ func evaluateV2Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	evaluator := evalv2.NewEvaluator(client, llmModelFlag, llmModelFlag)
 
-	resp, err := evaluator.Evaluate(r.Context(), req.EvalContext, req.Transcripts)
+	resp, usage, err := evaluator.Evaluate(r.Context(), req.EvalContext, req.Transcripts)
 	if err != nil {
 		log.Printf("EVAL-V2: Error %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if usage != nil {
+		log.Printf("EVAL-V2: Usage: %d tokens", usage.TotalTokenCount)
 	}
 
 	// Calculate Hash and Embed Snapshot
