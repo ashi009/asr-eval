@@ -117,9 +117,9 @@ type generateContextPromptData struct {
 }
 
 // buildGenerateContextPrompt constructs the prompt string for context generation
-func buildGenerateContextPrompt(data generateContextPromptData) (string, error) {
+func buildGenerateContextPrompt(d generateContextPromptData) (string, error) {
 	var buf bytes.Buffer
-	if err := generateContextPromptTemplate.Execute(&buf, data); err != nil {
+	if err := generateContextPromptTemplate.Execute(&buf, d); err != nil {
 		return "", fmt.Errorf("failed to execute genContext template: %w", err)
 	}
 	return buf.String(), nil
@@ -132,9 +132,9 @@ type evaluatePromptData struct {
 }
 
 // buildEvaluatePrompt constructs the prompt string for evaluation
-func buildEvaluatePrompt(data evaluatePromptData) (string, error) {
+func buildEvaluatePrompt(d evaluatePromptData) (string, error) {
 	var buf bytes.Buffer
-	if err := evaluatePromptTemplate.Execute(&buf, data); err != nil {
+	if err := evaluatePromptTemplate.Execute(&buf, d); err != nil {
 		return "", fmt.Errorf("failed to execute evaluate template: %w", err)
 	}
 	return buf.String(), nil

@@ -43,7 +43,7 @@ func reflectSchemaInner(t reflect.Type) *genai.Schema {
 			Items: reflectSchemaInner(t.Elem()),
 		}
 	case reflect.Struct:
-		schema := &genai.Schema{
+		s := &genai.Schema{
 			Type:       genai.TypeObject,
 			Properties: make(map[string]*genai.Schema),
 		}
@@ -54,19 +54,19 @@ func reflectSchemaInner(t reflect.Type) *genai.Schema {
 				continue
 			}
 			name := strings.Split(jsonTag, ",")[0]
-			propSchema := reflectSchemaInner(field.Type)
+			ps := reflectSchemaInner(field.Type)
 
 			// Handle custom 'jsonscheme' tag for enums or other constraints
 			if jsTag := field.Tag.Get("jsonscheme"); jsTag != "" {
-				applyJSONScheme(propSchema, jsTag)
+				applyJSONScheme(ps, jsTag)
 			}
 
-			schema.Properties[name] = propSchema
+			s.Properties[name] = ps
 			if !strings.Contains(jsonTag, "omitempty") {
-				schema.Required = append(schema.Required, name)
+				s.Required = append(s.Required, name)
 			}
 		}
-		return schema
+		return s
 	case reflect.String:
 		return &genai.Schema{Type: genai.TypeString}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -80,15 +80,15 @@ func reflectSchemaInner(t reflect.Type) *genai.Schema {
 	}
 }
 
-func applyJSONScheme(schema *genai.Schema, tag string) {
-	parts := strings.Split(tag, ";")
-	for _, part := range parts {
+func applyJSONScheme(s *genai.Schema, tag string) {
+	p := strings.Split(tag, ";")
+	for _, part := range p {
 		if strings.HasPrefix(part, "enum:") {
 			enumVals := strings.Split(strings.TrimPrefix(part, "enum:"), ",")
-			target := schema
+			target := s
 			// If applied to a Slice/Array field, apply the enum to the Items
-			if schema.Type == genai.TypeArray && schema.Items != nil {
-				target = schema.Items
+			if s.Type == genai.TypeArray && s.Items != nil {
+				target = s.Items
 			}
 			target.Enum = enumVals
 		}
