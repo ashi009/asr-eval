@@ -1,14 +1,17 @@
 package evalv2
 
+import "math"
+
 // EvalContext represents the output of Step 1 ([id].gt.v2.json)
 type EvalContext struct {
 	Meta        ContextMeta  `json:"meta"`
 	Checkpoints []Checkpoint `json:"checkpoints"`
+	Hash        string       `json:"hash,omitempty"` // Output only
 }
 
 // EvalReport represents the output of Step 2 ([id].report.v2.json)
 type EvalReport struct {
-	Results         map[string]EvalResult `json:"results"`
+	Results         map[string]EvalResult `json:"evaluations"`
 	ContextHash     string                `json:"context_hash,omitempty"`
 	ContextSnapshot EvalContext           `json:"context_snapshot,omitempty"`
 }
@@ -45,7 +48,23 @@ type EvalResult struct {
 type EvalMetrics struct {
 	SScore          float64         `json:"S_score"`
 	PScore          float64         `json:"P_score"`
+	QScore          int             `json:"Q_score"` // Output only (0-100)
 	PhoneticDetails PhoneticDetails `json:"PER_details"`
+}
+
+// SScoreWeight is the weight for S_score in composite calculation (P weight = 1 - S weight)
+var SScoreWeight float64 = 0.7
+
+// CompositeScore calculates Q = S_score^SWeight * P_score^(1-SWeight) as a whole number (0-100)
+func (m EvalMetrics) CompositeScore() int {
+	if math.IsNaN(m.SScore) || math.IsNaN(m.PScore) {
+		return 0
+	}
+	if m.SScore <= 0 || m.PScore <= 0 {
+		return 0
+	}
+	val := math.Pow(m.SScore, SScoreWeight) * math.Pow(m.PScore, 1-SScoreWeight)
+	return int(math.Round(val * 100))
 }
 
 // PhoneticDetails holds details for Phoneme Error Rate

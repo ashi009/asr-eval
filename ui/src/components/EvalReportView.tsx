@@ -4,6 +4,7 @@ import { getASRProviderConfig } from '../config';
 import { Case } from '../types';
 import { renderDiff } from './DiffRenderer';
 import { isResultStale } from '../utils/evalUtils';
+import { RichTooltip } from './RichTooltip';
 
 interface EvalReportViewProps {
   kase: Case;
@@ -15,8 +16,54 @@ interface EvalReportViewProps {
   getDefaultSelection: () => Record<string, boolean>;
 }
 
+// Unified result interface for rendering
+interface UnifiedResult {
+  score: number;
+  s_score?: number;
+  p_score?: number;
+  transcript?: string;
+  revised_transcript?: string;
+  summary?: string[];
+  checkpoint_results?: Record<string, any>;
+}
+
+function getUnifiedResults(kase: Case): Record<string, UnifiedResult> {
+  // Prefer v2 if available
+  const v2Evals = kase.report_v2?.evaluations;
+  if (v2Evals && Object.keys(v2Evals).length > 0) {
+    const results: Record<string, UnifiedResult> = {};
+    for (const [provider, ev] of Object.entries(v2Evals)) {
+      results[provider] = {
+        score: ev.metrics.Q_score, // Now an integer (0-100) from backend
+        s_score: ev.metrics.S_score,
+        p_score: ev.metrics.P_score,
+        transcript: ev.transcript,
+        revised_transcript: ev.revised_transcript,
+        summary: ev.summary,
+        checkpoint_results: ev.checkpoint_results,
+      };
+    }
+    return results;
+  }
+  // Fallback to v1
+  const v1Results = kase.eval_report?.eval_results;
+  if (v1Results) {
+    const results: Record<string, UnifiedResult> = {};
+    for (const [provider, res] of Object.entries(v1Results)) {
+      results[provider] = {
+        score: Math.round(res.score * 100), // Convert v1 (0-1) to 0-100
+        transcript: res.transcript,
+        revised_transcript: res.revised_transcript,
+        summary: res.summary,
+      };
+    }
+    return results;
+  }
+  return {};
+}
+
 export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection }: EvalReportViewProps) {
-  const evalResults = kase.eval_report?.eval_results || {};
+  const evalResults = getUnifiedResults(kase);
   const hasAI = Object.keys(evalResults).length > 0;
 
   const providers = Array.from(new Set([
@@ -64,49 +111,33 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full">
       <div className="bg-white px-8 flex flex-col shrink-0">
-        {/* Case ID Header */}
-        <div className="py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 pl-8">
-            <span className="text-sm font-mono font-medium text-slate-700 select-all">{kase.id}</span>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(kase.id);
-              }}
-              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-primary transition-colors"
-              title="Copy Case ID"
-            >
-              <Copy size={12} />
-            </button>
-          </div>
-        </div>
-
         {/* Persistent Axis Separator */}
-        <div className="relative h-px bg-slate-200">
+        <div className="relative h-px bg-slate-500 z-20 -top-px">
           {hasAI && (
             <div className="absolute inset-0">
               <div className="relative w-full h-full">
                 {/* Score Dots with Tooltips */}
                 {sortedPerformers.map(([p, res]) => {
-                  const score = res.score * 100;
+                  const score = res.score;
                   const config = getASRProviderConfig(p);
-                  const isNearLeft = score < 15;
-                  const isNearRight = score > 85;
-                  let tooltipPosition = 'left-1/2 -translate-x-1/2';
-                  if (isNearLeft) tooltipPosition = 'left-0';
-                  else if (isNearRight) tooltipPosition = 'right-0';
                   return (
-                    <div
+                    <RichTooltip
                       key={p}
                       className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer group"
                       style={{ left: `${score}%` }}
+                      trigger={
+                        <div className={`w-3 h-3 rounded-full ${config.color.dot} border-2 border-white shadow-sm hover:scale-125 transition-transform`} />
+                      }
                     >
-                      <div className={`w-3 h-3 rounded-full ${config.color.dot} border-2 border-white shadow-sm hover:scale-125 transition-transform`} />
-                      <div className={`absolute bottom-full ${tooltipPosition} mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30`}>
-                        {config.name}: {Math.round(score)}
+                      <div className="px-3 py-2 text-slate-700">
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">{config.name}</span>
+                          <span className="text-[12px] font-mono font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">{Math.round(score)}</span>
+                        </div>
                       </div>
-                    </div>
+                    </RichTooltip>
                   );
                 })}
               </div>
@@ -159,7 +190,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
       <div className="flex-1 overflow-y-auto min-h-0 px-8">
         {sortedProviders.map((p) => {
           const aiRes = evalResults[p];
-          const score = aiRes ? Math.round(aiRes.score * 100) : null;
+          const score = aiRes ? aiRes.score : null;
           const config = getASRProviderConfig(p);
           const { color, name } = config;
           const isSelected = !!selectedProviders?.[p];
@@ -253,9 +284,16 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
                     </div>
                   </div>
                 ) : (
-                  <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
-                    {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
-                  </div>
+                  <>
+                    <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
+                      {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
+                    </div>
+                    {aiRes?.s_score !== undefined && aiRes?.p_score !== undefined && (
+                      <div className="text-[10px] text-slate-400 font-medium mt-0.5 font-mono">
+                        S{Math.round(aiRes.s_score * 100)} P{Math.round(aiRes.p_score * 100)}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -310,11 +348,86 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
               <div className="text-xs text-slate-400">
                 {aiRes?.summary ? (
                   <ul className="space-y-1.5">
-                    {aiRes.summary.map((point, i) => (
-                      <li key={i} className="leading-snug">
-                        {point}
-                      </li>
-                    ))}
+                    {aiRes.summary.map((point, i) => {
+                      // Parse checkpoint references like S1, S2, etc. and render as badges
+                      const parts = point.split(/(S\d+)/g);
+                      return (
+                        <li key={i} className="leading-snug">
+                          {parts.map((part, j) => {
+                            if (/^S\d+$/.test(part)) {
+                              const checkpoint = kase.eval_context?.checkpoints.find(cp => cp.id === part);
+                              const result = aiRes.checkpoint_results?.[part];
+                              const tier = checkpoint?.tier ?? 3;
+                              const badgeClass = tier === 1
+                                ? 'bg-red-50 text-red-600 border-red-200'
+                                : tier === 2
+                                  ? 'bg-amber-50 text-amber-600 border-amber-200'
+                                  : 'bg-slate-50 text-slate-600 border-slate-200';
+
+                              return (
+                                <RichTooltip
+                                  key={j}
+                                  className="inline-block mb-0.5"
+                                  trigger={
+                                    <span
+                                      className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-black mx-0.5 align-middle border cursor-help hover:bg-white transition-colors ${badgeClass}`}
+                                    >
+                                      {part}
+                                    </span>
+                                  }
+                                >
+                                  <div className="p-4 space-y-3.5 text-left w-72">
+                                    {/* Header: Exact same as Context Detail */}
+                                    <div className="flex items-center justify-between gap-4">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black border ${tier === 1 ? 'bg-red-50 text-red-700 border-red-100' :
+                                          tier === 2 ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                            'bg-slate-50 text-slate-700 border-slate-100'
+                                          }`}>
+                                          {part}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Tier {tier}</span>
+                                      </div>
+                                      <span className="shrink-0 text-[11px] font-mono font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">
+                                        {checkpoint ? Math.round(checkpoint.weight * 100) : 0}%
+                                      </span>
+                                    </div>
+
+                                    {/* Segment Analysis (Diff) */}
+                                    {checkpoint?.text_segment && (
+                                      <div className="space-y-1">
+                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Original vs Detected</span>
+                                        <div className="text-[11px] text-slate-700 leading-relaxed font-medium">
+                                          {result?.detected ? renderDiff(checkpoint.text_segment, result.detected) : checkpoint.text_segment}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* AI Detection Reason (with Status Badge as label) */}
+                                    {result?.reason && (
+                                      <div className="pt-2 space-y-1">
+                                        {result?.status && (
+                                          <span className={`inline-block text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border mb-0.5 ${result.status === 'Pass' ? 'bg-green-50 text-green-700 border-green-100' :
+                                            result.status === 'Fail' ? 'bg-red-50 text-red-700 border-red-100' :
+                                              'bg-amber-50 text-amber-700 border-amber-100'
+                                            }`}>
+                                            {result.status}
+                                          </span>
+                                        )}
+                                        <p className="text-[11px] text-slate-600 leading-relaxed font-semibold">
+                                          {result.reason}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </RichTooltip>
+                              );
+                            }
+                            return <span key={j}>{part}</span>;
+                          })}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <span className="text-slate-300 text-lg">—</span>
@@ -324,6 +437,6 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
           );
         })}
       </div>
-    </div >
+    </div>
   );
-};
+}

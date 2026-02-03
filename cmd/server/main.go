@@ -2,7 +2,6 @@ package main
 
 import (
 	"asr-eval/pkg/evalv2"
-	"asr-eval/pkg/llm"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -25,20 +24,38 @@ type Case struct {
 	ID          string              `json:"id"`
 	GroundTruth string              `json:"ground_truth"`           // From [id].gt.json
 	Transcripts map[string]string   `json:"transcripts"`            // From [id].[provider].txt
-	EvalReport  *llm.EvalReport     `json:"eval_report,omitempty"`  // From [id].[model].report.json
 	EvalContext *evalv2.EvalContext `json:"eval_context,omitempty"` // From [id].gt.v2.json
 	ReportV2    *evalv2.EvalReport  `json:"report_v2,omitempty"`    // From [id].report.v2.json
 }
 
 var (
-	datasetDir   string
-	llmModelFlag string
+	datasetDir       string
+	genModelFlag     string
+	evalModelFlag    string
+	enabledProviders = map[string]bool{
+		"volc":         false,
+		"volc_ctx":     false,
+		"volc_ctx_rt":  false,
+		"volc2_ctx":    false,
+		"volc2_ctx_rt": true,
+		"qwen_ctx_rt":  true,
+		"ifly":         true,
+		"ifly_mq":      true,
+		"ifly_en":      false,
+		"iflybatch":    false,
+		"dg":           false,
+		"snx":          false,
+		"snxrt":        true,
+		"ist_basic":    true,
+		"txt":          false,
+	}
 )
 
 func main() {
 	var port int
 	flag.StringVar(&datasetDir, "dataset-dir", "transcripts_and_audios", "Directory containing transcripts and audio files")
-	flag.StringVar(&llmModelFlag, "llm-model", "doubao-seed-1-8-251228", "LLM model to use for evaluation")
+	flag.StringVar(&genModelFlag, "gen-model", "gemini-3-pro-preview", "LLM model to use for context generation")
+	flag.StringVar(&evalModelFlag, "eval-model", "gemini-3-flash-preview", "LLM model to use for evaluation")
 	flag.IntVar(&port, "port", 8080, "Port to listen on")
 	flag.Parse()
 
@@ -61,25 +78,25 @@ func main() {
 	audioFs := http.FileServer(http.Dir(datasetDir))
 	http.Handle("/audio/", http.StripPrefix("/audio/", audioFs))
 
-	http.HandleFunc("/api/cases", listFilesHandler)
-	http.HandleFunc("/api/evaluate-llm", runEvalHandler)
-	http.HandleFunc("/api/case", getCaseHandler)
+	http.HandleFunc("/api/cases", recoveryMiddleware(listCasesHandler))
+	http.HandleFunc("/api/case", recoveryMiddleware(getCaseHandler))
 	// User didn't explicitly ask to change endpoint path, but consistency implies it.
 	// But frontend calls /reset-eval. I should update frontend if I change endpoint.
 	// Let's keep endpoint for now or change it?
 	// Recommendation: Change endpoint to /api/reset-report for consistency.
 
-	http.HandleFunc("/api/evaluate-v2", evaluateV2Handler)
-	http.HandleFunc("/api/generate-context", generateContextHandler)
-	http.HandleFunc("/api/save-context", saveContextHandler)
+	http.HandleFunc("/api/evaluate-v2", recoveryMiddleware(evaluateV2Handler))
+	http.HandleFunc("/api/generate-context", recoveryMiddleware(generateContextHandler))
+	http.HandleFunc("/api/save-context", recoveryMiddleware(saveContextHandler))
 
-	http.HandleFunc("/api/reset-eval", resetReportHandler)
-	http.HandleFunc("/api/save-gt", saveGTHandler)
-	http.HandleFunc("/api/config", configHandler)
+	http.HandleFunc("/api/reset-eval", recoveryMiddleware(resetReportHandler))
+	http.HandleFunc("/api/save-gt", recoveryMiddleware(saveGTHandler))
+	http.HandleFunc("/api/config", recoveryMiddleware(configHandler))
 
 	fmt.Printf("Attempting to listen on 127.0.0.1:%d...\n", port)
 	fmt.Printf("Using dataset directory: %s\n", datasetDir)
-	fmt.Printf("Default LLM Model: %s\n", llmModelFlag)
+	fmt.Printf("Gen Model: %s\n", genModelFlag)
+	fmt.Printf("Eval Model: %s\n", evalModelFlag)
 	err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), nil)
 	if err != nil {
 		log.Fatalf("Failed to bind to 127.0.0.1:%d: %v\n", port, err)
@@ -88,12 +105,26 @@ func main() {
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"llm_model": llmModelFlag,
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"gen_model":         genModelFlag,
+		"eval_model":        evalModelFlag,
+		"enabled_providers": enabledProviders,
 	})
 }
 
-func listFilesHandler(w http.ResponseWriter, r *http.Request) {
+func recoveryMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("PANIC: %v", err)
+				http.Error(w, "Internal Server Error (Panic)", http.StatusInternalServerError)
+			}
+		}()
+		next(w, r)
+	}
+}
+
+func listCasesHandler(w http.ResponseWriter, r *http.Request) {
 	data, err := scanFiles(datasetDir)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -114,16 +145,15 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 	type caseInfo struct {
 		hasEval        bool
 		bestPerformers []string
-		maxScore       float64
+		maxScore       int
 	}
 	infoMap := make(map[string]*caseInfo)
 
-	targetSuffix := fmt.Sprintf(".%s.report.json", llmModelFlag)
-	// oldSuffix := ".result.json" // Removed unused variable
+	targetSuffix := ".report.v2.json"
 
 	for _, f := range files {
 		name := f.Name()
-		// STRICT filtering: only accept [id].[llmModelFlag].report.json
+		// STRICT filtering: only accept [id].report.v2.json
 		if strings.HasSuffix(name, targetSuffix) {
 			id := strings.TrimSuffix(name, targetSuffix)
 			if infoMap[id] == nil {
@@ -136,14 +166,19 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 				continue
 			}
 
-			var report llm.EvalReport
+			var report evalv2.EvalReport
 			// We only care about the specific model result in that file
-			if err := json.Unmarshal(content, &report); err == nil && report.EvalResults != nil {
-				for provider, res := range report.EvalResults {
-					if res.Score > infoMap[id].maxScore {
-						infoMap[id].maxScore = res.Score
+			if err := json.Unmarshal(content, &report); err == nil && report.Results != nil {
+				for provider, res := range report.Results {
+					// Only consider enabled providers for best performers
+					if enabled, ok := enabledProviders[provider]; !ok || !enabled {
+						continue
+					}
+					score := res.Metrics.CompositeScore()
+					if score > infoMap[id].maxScore {
+						infoMap[id].maxScore = score
 						infoMap[id].bestPerformers = []string{provider}
-					} else if res.Score == infoMap[id].maxScore {
+					} else if score == infoMap[id].maxScore {
 						infoMap[id].bestPerformers = append(infoMap[id].bestPerformers, provider)
 					}
 				}
@@ -197,8 +232,6 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 		Transcripts: make(map[string]string),
 	}
 
-	targetSuffix := fmt.Sprintf(".%s.report.json", llmModelFlag)
-
 	// Read all related files for this ID
 	files, _ := ioutil.ReadDir(datasetDir)
 	for _, f := range files {
@@ -232,15 +265,12 @@ func getCaseHandler(w http.ResponseWriter, r *http.Request) {
 			content, _ := ioutil.ReadFile(path)
 			var report evalv2.EvalReport
 			if err := json.Unmarshal(content, &report); err == nil {
+				// Always compute Q_score dynamically (never stored in file)
+				for provider, res := range report.Results {
+					res.Metrics.QScore = res.Metrics.CompositeScore()
+					report.Results[provider] = res
+				}
 				data.ReportV2 = &report
-			}
-		} else if name == id+targetSuffix {
-			// STRICT filtering: Only read results for the ACTIVE model
-			content, _ := ioutil.ReadFile(path)
-
-			var report llm.EvalReport
-			if err := json.Unmarshal(content, &report); err == nil {
-				data.EvalReport = &report
 			}
 		} else if strings.HasSuffix(name, ".flac") {
 			// Ignore
@@ -274,7 +304,7 @@ func resetReportHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Strictly target the file for the current model
-	filename := fmt.Sprintf("%s.%s.report.json", id, llmModelFlag)
+	filename := fmt.Sprintf("%s.report.v2.json", id)
 	path := filepath.Join(datasetDir, filename)
 	log.Printf("RESET: Request for ID=%s, Path=%s", id, path)
 
@@ -344,96 +374,6 @@ func saveGTHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func runEvalHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req struct {
-		ID          string            `json:"id"`
-		GroundTruth string            `json:"ground_truth"`
-		Transcripts map[string]string `json:"transcripts"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// 1. Save Ground Truth
-	gtFilename := filepath.Join(datasetDir, req.ID+".gt.json")
-	gtData := struct {
-		GroundTruth string `json:"ground_truth"`
-	}{
-		GroundTruth: req.GroundTruth,
-	}
-	if gtBytes, err := json.MarshalIndent(gtData, "", "  "); err == nil {
-		if err := ioutil.WriteFile(gtFilename, gtBytes, 0644); err != nil {
-			log.Printf("EVAL: Failed to save GT for ID=%s: %v", req.ID, err)
-		} else {
-			log.Printf("EVAL: Saved GT for ID=%s", req.ID)
-		}
-	}
-	// 2. Setup LLM Client
-	client, err := llm.NewClient(llmModelFlag)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
-		return
-	}
-	evaluator := llm.NewEvaluator(client)
-
-	// 3. Run Evaluation
-	var newResults map[string]llm.EvalResult
-	if len(req.Transcripts) > 0 {
-		newResults, err = evaluator.Evaluate(r.Context(), req.GroundTruth, req.Transcripts)
-		if err != nil {
-			log.Printf("LLM Eval failed: %v", err)
-			http.Error(w, fmt.Sprintf("LLM evaluation failed: %v", err), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		newResults = make(map[string]llm.EvalResult)
-	}
-
-	// 4. Determine Output File
-	resultFilename := filepath.Join(datasetDir, fmt.Sprintf("%s.%s.report.json", req.ID, llmModelFlag))
-	log.Printf("EVAL: Running evaluation for ID=%s, Output=%s", req.ID, resultFilename)
-
-	// 5. Load Existing Results (stateful merge)
-	finalResults := make(map[string]llm.EvalResult)
-
-	if fileBytes, err := ioutil.ReadFile(resultFilename); err == nil {
-		var report llm.EvalReport
-		if err := json.Unmarshal(fileBytes, &report); err == nil && report.EvalResults != nil {
-			finalResults = report.EvalResults
-			log.Printf("EVAL: Loaded %d existing results for ID=%s", len(finalResults), req.ID)
-		}
-	}
-
-	// 6. Merge New Results
-	for k, v := range newResults {
-		finalResults[k] = v
-	}
-	log.Printf("EVAL: Merged new results, total providers: %d", len(finalResults))
-
-	// 7. Save
-	report := llm.EvalReport{
-		GroundTruth: req.GroundTruth,
-		EvalResults: finalResults,
-	}
-	data, _ := json.MarshalIndent(report, "", "  ")
-	if err := ioutil.WriteFile(resultFilename, data, 0644); err != nil {
-		log.Printf("EVAL: ERROR writing result file %s: %v", resultFilename, err)
-	} else {
-		log.Printf("EVAL: Successfully saved result file: %s", resultFilename)
-	}
-
-	// 8. Return Report (updated to return full report now)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(report)
-}
-
 func generateContextHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -467,11 +407,9 @@ func generateContextHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
 		return
 	}
-	// Same client, same model for now based on flags?
-	// In generateContextHandler, it uses llmModelFlag which is the global flag.
 	// The original code used evalv2.NewGenerator(client, llmModelFlag).
 	// So we change to evalv2.NewEvaluator(client, llmModelFlag).
-	generator := evalv2.NewEvaluator(client, llmModelFlag, llmModelFlag)
+	generator := evalv2.NewEvaluator(client, genModelFlag, evalModelFlag)
 
 	audioPath := filepath.Join(datasetDir, req.ID+".flac")
 	ctxResp, usage, err := generator.GenerateContext(r.Context(), audioPath, req.GroundTruth, req.Transcripts)
@@ -484,13 +422,18 @@ func generateContextHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("GEN-CTX: Usage: %d tokens", usage.TotalTokenCount)
 	}
 
-	// Save context
-	filename := filepath.Join(datasetDir, req.ID+".gt.v2.json")
-	bytes, _ := json.MarshalIndent(ctxResp, "", "  ")
-	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
-		http.Error(w, "Failed to save context file", http.StatusInternalServerError)
-		return
-	}
+	// Calculate Hash for the generated context
+	ctxBytes, _ := json.Marshal(ctxResp)
+	hash := md5.Sum(ctxBytes)
+	ctxResp.Hash = hex.EncodeToString(hash[:])
+
+	// Stateless: Do NOT save to file yet. User must explicitly save.
+	// filename := filepath.Join(datasetDir, req.ID+".gt.v2.json")
+	// bytes, _ := json.MarshalIndent(ctxResp, "", "  ")
+	// if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+	// 	http.Error(w, "Failed to save context file", http.StatusInternalServerError)
+	// 	return
+	// }
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ctxResp)
@@ -516,6 +459,16 @@ func saveContextHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save context", http.StatusInternalServerError)
 		return
 	}
+
+	// Reset (delete) the evaluation report for this case
+	reportDetails := filepath.Join(datasetDir, req.ID+".report.v2.json")
+	if err := os.Remove(reportDetails); err != nil && !os.IsNotExist(err) {
+		log.Printf("SAVE-CTX: Warning: Failed to delete stale report %s: %v", reportDetails, err)
+		// Don't fail the request, just log
+	} else {
+		log.Printf("SAVE-CTX: Cleared stale report for ID=%s", req.ID)
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -535,13 +488,18 @@ func evaluateV2Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.EvalContext == nil {
+		http.Error(w, "Evaluation Context is required for V2 evaluation", http.StatusBadRequest)
+		return
+	}
+
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	client, err := genai.NewClient(r.Context(), &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to init LLM client: %v", err), http.StatusInternalServerError)
 		return
 	}
-	evaluator := evalv2.NewEvaluator(client, llmModelFlag, llmModelFlag)
+	evaluator := evalv2.NewEvaluator(client, genModelFlag, evalModelFlag)
 
 	resp, usage, err := evaluator.Evaluate(r.Context(), req.EvalContext, req.Transcripts)
 	if err != nil {
@@ -556,17 +514,38 @@ func evaluateV2Handler(w http.ResponseWriter, r *http.Request) {
 	// Calculate Hash and Embed Snapshot
 	ctxBytes, _ := json.Marshal(req.EvalContext)
 	hash := md5.Sum(ctxBytes)
-	resp.ContextHash = hex.EncodeToString(hash[:])
+	contextHash := hex.EncodeToString(hash[:])
+	resp.ContextHash = contextHash
 	resp.ContextSnapshot = *req.EvalContext
 
-	// Save Report
+	// Save Report (with merging)
 	filename := filepath.Join(datasetDir, req.ID+".report.v2.json")
-	bytes, _ := json.MarshalIndent(resp, "", "  ")
-	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+	var finalReport *evalv2.EvalReport
+
+	if existingBytes, err := os.ReadFile(filename); err == nil {
+		var existingReport evalv2.EvalReport
+		if err := json.Unmarshal(existingBytes, &existingReport); err == nil {
+			if existingReport.ContextHash == contextHash {
+				// Same context, merge results
+				for provider, result := range resp.Results {
+					existingReport.Results[provider] = result
+				}
+				finalReport = &existingReport
+			}
+		}
+	}
+
+	if finalReport == nil {
+		// No existing report or different context, use new one
+		finalReport = resp
+	}
+
+	bytes, _ := json.MarshalIndent(finalReport, "", "  ")
+	if err := os.WriteFile(filename, bytes, 0644); err != nil {
 		http.Error(w, "Failed to save report", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(finalReport)
 }

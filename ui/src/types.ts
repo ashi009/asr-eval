@@ -49,6 +49,8 @@ export interface MetaInfo {
   audio_reality_inference: string;
   total_token_count_estimate: number;
   ground_truth: string;
+  questionable_gt?: boolean;
+  questionable_reason?: string;
 }
 
 export interface ContextResponse {
@@ -71,6 +73,7 @@ export interface PERDetails {
 export interface Metrics {
   S_score: number;
   P_score: number;
+  Q_score: number; // Pre-computed composite score from backend
   PER_details: PERDetails;
 }
 

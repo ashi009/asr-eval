@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import { AudioLines, Search, Loader2 } from 'lucide-react';
-import { getASRProviderConfig } from '../config';
+import { getASRProviderConfig, isProviderEnabled, setEnabledProviders } from '../config';
 import { Case, LoadingData } from '../types';
 import { isResultStale } from '../utils/evalUtils';
 import { CaseDetail } from './CaseDetail';
+import { RichTooltip } from './RichTooltip';
+
 
 export function Layout() {
   const [cases, setCases] = useState<Case[]>([]);
@@ -23,8 +25,7 @@ export function Layout() {
     ]);
 
     providerKeys.forEach(provider => {
-      const config = getASRProviderConfig(provider);
-      const isEnabled = config.enabled !== false;
+      const isEnabled = isProviderEnabled(provider);
 
       const hasResult = !!results[provider];
       const isStale = hasResult && isResultStale(data.transcripts?.[provider], results[provider]);
@@ -78,7 +79,12 @@ export function Layout() {
   useEffect(() => {
     fetch('/api/config')
       .then(res => res.json())
-      .then(data => setLlmModel(data.llm_model))
+      .then(data => {
+        setLlmModel(data.llm_model);
+        if (data.enabled_providers) {
+          setEnabledProviders(data.enabled_providers);
+        }
+      })
       .catch(console.error);
   }, []);
 
@@ -199,13 +205,20 @@ export function Layout() {
                             c.best_performers.map((p, idx) => {
                               const config = getASRProviderConfig(p);
                               return (
-                                <div
+                                <RichTooltip
                                   key={p}
-                                  className={`w-6 h-6 flex items-center justify-center rounded-full border-2 border-white ring-1 ring-slate-100 ${config.color.dot} text-white shadow-sm z-[${10 - idx}] relative group/badge`}
-                                  title={config.name}
+                                  trigger={
+                                    <div
+                                      className={`w-6 h-6 flex items-center justify-center rounded-full border-2 border-white ring-1 ring-slate-100 ${config.color.dot} text-white shadow-sm z-[${10 - idx}] relative group/badge`}
+                                    >
+                                      <span className="text-[8px] font-bold uppercase">{config.name.substring(0, 1)}</span>
+                                    </div>
+                                  }
                                 >
-                                  <span className="text-[8px] font-bold uppercase">{config.name.substring(0, 1)}</span>
-                                </div>
+                                  <div className="px-3 py-2 text-xs font-bold text-slate-700">
+                                    {config.name}
+                                  </div>
+                                </RichTooltip>
                               );
                             })
                           ) : (
@@ -251,6 +264,7 @@ export function Layout() {
               initSelection={initSelection}
             />
           } />
+
         </Routes>
       </main>
     </div>

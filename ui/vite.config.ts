@@ -6,7 +6,7 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendPort = process.env.BACKEND_PORT || env.BACKEND_PORT || '8080'
-  const target = `http://localhost:${backendPort}`
+  const target = `http://127.0.0.1:${backendPort}`
   console.log(`Proxying API requests to: ${target}`)
 
   return {

@@ -1,0 +1,185 @@
+import React, { useState, useEffect } from 'react';
+import { ContextResponse } from '../types';
+import { ContextCreator } from './ContextCreator';
+import { ContextReviewer } from './ContextReviewer';
+import { AudioPlayer } from './AudioPlayer';
+import { X } from 'lucide-react';
+
+interface ContextManagerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  caseId: string;
+  initialGT: string;
+  initialContext?: ContextResponse;
+  onSave: (context: ContextResponse, gt: string) => void;
+}
+
+type ViewMode = 'EDITOR' | 'COMPARISON';
+
+export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
+  isOpen,
+  onClose,
+  caseId,
+  initialGT,
+  initialContext,
+  onSave,
+}) => {
+  const [view, setView] = useState<ViewMode>('EDITOR');
+  // Lifted state
+  const [gtText, setGtText] = useState(initialGT);
+  const [gtAtGeneration, setGtAtGeneration] = useState<string | null>(null);
+  const [context, setContext] = useState<ContextResponse | undefined>(initialContext);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Reset state on open
+      setGtText(initialGT);
+      setGtAtGeneration(initialContext ? initialGT : null);
+      setContext(initialContext);
+      setError(null);
+      setView('EDITOR');
+    }
+    return () => {
+      // Abort on close or unmount
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [isOpen, initialGT, initialContext]);
+
+  if (!isOpen) return null;
+
+  // Handlers for Creator
+  const handleGenerate = async () => {
+    // Abort previous request if loading
+    if (loading && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const res = await fetch('/api/generate-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: caseId, ground_truth: gtText }),
+        signal: controller.signal
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data: ContextResponse = await res.json();
+      setContext(data);
+      setGtAtGeneration(gtText);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setError(err.message);
+      }
+    } finally {
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+        abortControllerRef.current = null;
+      }
+    }
+  };
+
+  const hasChanges = () => {
+    if (!initialContext || !context) return false;
+    const gtChanged = gtText !== initialGT;
+    // Simple check for context changes - deeper check could be expensive but check ref or content
+    // Checkpoints length or content
+    const contextChanged = JSON.stringify(context.checkpoints) !== JSON.stringify(initialContext.checkpoints)
+      || context.meta.business_goal !== initialContext.meta.business_goal
+      || context.meta.audio_reality_inference !== initialContext.meta.audio_reality_inference;
+
+    return gtChanged || contextChanged;
+  };
+
+  const handlePrimaryAction = () => {
+    if (initialContext) {
+      if (hasChanges()) {
+        setView('COMPARISON');
+      }
+    } else {
+      handleSaveDirectly();
+    }
+  };
+
+  const handleSaveDirectly = async () => {
+    if (!context) return;
+    onSave(context, gtText);
+    try {
+      await fetch('/api/save-context', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: caseId, context }),
+      });
+      await fetch('/api/save-gt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: caseId, ground_truth: gtText }),
+      });
+      onClose();
+    } catch (err: any) {
+      setError("Failed to save: " + err.message);
+    }
+  };
+
+  const getTitle = () => {
+    if (view === 'COMPARISON') return 'Review Changes';
+    return initialContext ? 'Edit Evaluation Context' : 'Create Evaluation Context';
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-[90vw] h-[80vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-4 px-6 py-3 border-b border-slate-200 bg-white shrink-0">
+          <span className="text-sm font-bold text-slate-700 shrink-0">
+            {getTitle()}
+          </span>
+          <AudioPlayer caseId={caseId} className="flex-1" />
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Content */}
+        {view === 'EDITOR' ? (
+          <ContextCreator
+            gtText={gtText}
+            setGtText={setGtText}
+            gtAtGeneration={gtAtGeneration}
+            context={context}
+            loading={loading}
+            error={error}
+            onGenerate={handleGenerate}
+            onPrimaryAction={handlePrimaryAction}
+            initialContext={initialContext}
+            onCancel={onClose}
+            disablePrimary={initialContext ? !hasChanges() : false}
+          />
+        ) : (
+          <ContextReviewer
+            oldContext={initialContext!}
+            newContext={context!}
+            oldGT={initialGT}
+            newGT={gtText}
+            onBack={() => setView('EDITOR')}
+            onSave={handleSaveDirectly}
+            onCancel={onClose}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
