@@ -118,7 +118,13 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
   };
 
   const handleContextSave = (ctx: ContextResponse, gt: string) => {
-    updateCaseLocal({ eval_context: ctx, ground_truth: gt });
+    updateCaseLocal({
+      eval_context: ctx,
+      ground_truth: gt,
+      // Clear reports to reflect that they are now stale/invalid until re-run
+      report_v2: undefined,
+      eval_report: undefined
+    });
   };
 
   const isProcessingThisCase = currentCase?.id ? processingCases.has(currentCase.id) : false;
@@ -236,6 +242,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
           onDeselectAll={() => setSelectedProviders({})}
           onSelectDefault={() => setSelectedProviders(initSelection(currentCase))}
           getDefaultSelection={() => initSelection(currentCase)}
+          isProcessing={isProcessingThisCase}
         />
       </div>
 

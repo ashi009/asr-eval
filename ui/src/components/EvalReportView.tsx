@@ -14,6 +14,7 @@ interface EvalReportViewProps {
   onDeselectAll: () => void;
   onSelectDefault: () => void;
   getDefaultSelection: () => Record<string, boolean>;
+  isProcessing?: boolean;
 }
 
 // Unified result interface for rendering
@@ -62,7 +63,7 @@ function getUnifiedResults(kase: Case): Record<string, UnifiedResult> {
   return {};
 }
 
-export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection }: EvalReportViewProps) {
+export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection, isProcessing }: EvalReportViewProps) {
   const evalResults = getUnifiedResults(kase);
   const hasAI = Object.keys(evalResults).length > 0;
 
@@ -115,7 +116,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
       <div className="bg-white px-8 flex flex-col shrink-0">
         {/* Persistent Axis Separator */}
         <div className="relative h-px bg-slate-500 z-20 -top-px">
-          {hasAI && (
+          {hasAI && !isProcessing && (
             <div className="absolute inset-0">
               <div className="relative w-full h-full">
                 {/* Score Dots with Tooltips */}
@@ -196,6 +197,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
           const isSelected = !!selectedProviders?.[p];
           const stale = isStale(p);
           const mode = diffModes[p] || 'eval';
+          const isLoading = isProcessing && isSelected;
 
           // Prepare Diff Texts
           const origin = aiRes?.transcript || ""; // Snapshot
@@ -273,7 +275,13 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
                   </span>
                 </div>
                 {/* Score - not clickable */}
-                {stale ? (
+                {isLoading ? (
+                  // Loading Skeleton for Score
+                  <div className="mt-1 animate-pulse">
+                    <div className="h-8 w-12 bg-slate-200 rounded mb-1"></div>
+                    <div className="h-3 w-16 bg-slate-100 rounded"></div>
+                  </div>
+                ) : stale ? (
                   <div className="mt-1 flex items-center gap-2" title="Transcript changed since evaluation">
                     <div className="text-3xl font-bold text-slate-300 line-through opacity-50">
                       {score}
@@ -346,7 +354,14 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
 
               {/* Column 3: Analysis */}
               <div className="text-xs text-slate-400">
-                {aiRes?.summary ? (
+                {isLoading ? (
+                  // Loading Skeleton for Analysis
+                  <div className="space-y-2 animate-pulse">
+                    <div className="h-4 bg-slate-200 rounded w-full"></div>
+                    <div className="h-4 bg-slate-200 rounded w-5/6"></div>
+                    <div className="h-4 bg-slate-200 rounded w-4/6"></div>
+                  </div>
+                ) : aiRes?.summary ? (
                   <ul className="space-y-1.5">
                     {aiRes.summary.map((point, i) => {
                       // Parse checkpoint references like S1, S2, etc. and render as badges
