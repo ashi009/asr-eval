@@ -36,12 +36,16 @@ Task:
    - Do **NOT** use information from the Audio or Transcripts for this field.
    - Even if the GT seems incomplete or contradicts the Audio, you **MUST** describe the intent derived **only** from the GT text.
    - This goal serves as the "Intended Request" baseline.
-2. key **Audio Reality Inference**: Reconstruct the full audio text including fillers, stutters, and hesitation sounds that might be missing in GT but present in Audio. This is the "Phonetic Truth". Non-GT transcripts may contain phonetic simliar gibberish due to code-change, don't use them verbatim, but infer the correct words.
+2. key **Audio Reality Inference**:
+   - Reconstruct the full audio text including fillers, stutters, and hesitation sounds that might be missing in GT but present in Audio. This is the "Phonetic Truth".
+   - Non-GT transcripts may contain phonetic simliar gibberish due to code-change, don't use them verbatim, but infer the correct words.
 3. Estimate **Total Token Count**: approximate count of tokens in the audio reality.
 4. Define **Checkpoints** (Hierarchical):
    - Analyze the GT and Business intent.
    - Break down the GT into segments, ensuring **EVERY** sentence and phrase in the GT is covered by at least one checkpoint.
    - **Complete Coverage Policy**: Do not skip parts of the GT. If a sentence is trivial, assign it to Tier 3 with very low weight (e.g., 0.05), but it MUST include it.
+   - **Strict Ordering Policy**: Checkpoints MUST follow the exact order of appearance in the GT. Text segments must NOT be rearranged.
+   - **Verbatim Policy**: The text segment MUST be an exact verbatim substring from the GT. Do not paraphrase.
    - Provide a unique ID (S1, S2...), the text segment, tier (1,2,3), weight (0.0-1.0), and rationale.
 5. **Questionable GT?**:
    - Do you think the provided Ground Truth is questionable (e.g., contains obvious typos, missing words, or is completely wrong compared to the Audio/Audio Reality)?
@@ -86,19 +90,20 @@ Goals:
    - If Failed, provide a brief "reason" (e.g., "Misheard 'forty' as 'four'").
    - $S$ Score = Weighted sum of passed checkpoints / Total weight.
 
-41: 其中 CheckpointResult 的 Status 取值逻辑：
+2. **CheckpointResult Status Logic**:
+   - **Pass**: 1.0
+   - **Fail**: 0.0
+   - **Partial** (Only for Tier 2/3): 0.5 (Tier 1 is strictly forbidden to use Partial)
 
-* **Pass**: 1.0
-* **Fail**: 0.0
-* **Partial** (仅限 Tier 2/3): 0.5 （Tier 1 严禁使用 Partial）
-
-2. **Acoustic Scoring ($P$)**: Evaluate phonetic fidelity ($P = 1 - \text{PER}$).
+3. **Acoustic Scoring ($P$)**: Evaluate phonetic fidelity ($P = 1 - \text{PER}$).
    - Compare transcript vs "audio_reality_inference" in Context.
-   - Calculate PER (Word Error Rate concept but for Phonetic match).
-3. **UI Diff Support**: Generate "revised_transcript".
+   - Calculate PER (Phonetic Error Rate).
+4. **UI Diff Support**: Generate "revised_transcript".
    - REPLACE words that triggered Tier 1/2 Fail with correct words from Context.
    - KEEP fillers/stutters if they don't break checkpoints.
-4. **Summary**: Provide a list of at most 3 SHORT strings explaining the major factors for the score (e.g. "Missed Critical Entity S2", "High Phonetic Accuracy").
+5. **Summary**: Provide a list of at most 3 SHORT strings explaining the major factors for the score
+   - for $S$ include Checkpoint IDs, eg. "Missed Critical Entity S2/S4"
+   - for $P$, eg. "High Phonetic Accuracy"
 
 Context for Evaluation:
 {{.EvalContext | json}}
