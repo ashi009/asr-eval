@@ -112,7 +112,7 @@ function renderSimpleDiff(oldText: string, newText: string): React.ReactNode {
   return (
     <span>
       {diffs.map((part, i) => {
-        const text = part.value.join('');
+        const text = part.value;
         if (part.added) return <span key={i} className="bg-green-100 text-green-700">{text}</span>;
         if (part.removed) return <span key={i} className="bg-red-100 text-red-400 line-through">{text}</span>;
         return <span key={i}>{text}</span>;

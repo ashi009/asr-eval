@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ContextResponse, Checkpoint } from '../types';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Copy } from 'lucide-react';
 import { smartDiff } from '../diffUtils';
 import { CheckpointList } from './CheckpointList';
 
@@ -157,6 +157,21 @@ export const ContextCreator: React.FC<ContextCreatorProps> = ({
                         Audio Reality Inference
                       </button>
                     </div>
+
+                    <button
+                      onClick={() => {
+                        const text = showAudioReality
+                          ? context.meta.audio_reality_inference
+                          : context.meta.ground_truth;
+                        navigator.clipboard.writeText(text);
+                        // Brief success state could be added here if desired, but user just asked for the button
+                        // To keep it simple and consistent with other copy buttons that just do it:
+                      }}
+                      className="ml-2 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                      title={showAudioReality ? "Copy Audio Reality Inference" : "Copy Ground Truth"}
+                    >
+                      <Copy size={14} />
+                    </button>
                   </div>
                 )}
 
@@ -206,53 +221,58 @@ function computeSegmentedDiff(
   checkpoints: Checkpoint[],
   audioReality: string
 ): Map<string, SegmentDiffPart[]> {
-  const joinedSegments = checkpoints.map(cp => cp.text_segment).join('');
+  // Use a special separator character to guide segmentation
+  const SEP = '\u0000';
+  const joinedSegments = checkpoints.map(cp => cp.text_segment).join(SEP);
+  // smartDiff relies on diffWords which might split by words.
+  // We need to ensure the separator text is treated uniquely if possible,
+  // but diffWords generally works on whitespace.
+  // However, since we are doing character-based diff essentially (or word based),
+  // if SEP is distinct it should appear in the diff.
   const diffs = smartDiff(joinedSegments, audioReality, true);
-  const result = new Map<string, SegmentDiffPart[]>();
 
-  let cpIndex = 0;
-  let cpOffset = 0;
+  const result = new Map<string, SegmentDiffPart[]>();
   checkpoints.forEach(cp => result.set(cp.id, []));
 
-  for (const part of diffs) {
-    const partValue = part.value.join('');
+  let cpIndex = 0;
 
-    if (part.removed) {
-      let remaining = partValue.length;
-      let valueOffset = 0;
-      while (remaining > 0 && cpIndex < checkpoints.length) {
-        const cp = checkpoints[cpIndex];
-        const cpLen = cp.text_segment.length;
-        const available = cpLen - cpOffset;
-        const take = Math.min(remaining, available);
-        if (take > 0) {
-          result.get(cp.id)!.push({ value: partValue.substring(valueOffset, valueOffset + take), removed: true });
-        }
-        remaining -= take;
-        valueOffset += take;
-        cpOffset += take;
-        if (cpOffset >= cpLen) { cpIndex++; cpOffset = 0; }
-      }
-    } else if (part.added) {
+  for (const part of diffs) {
+    if (part.added) {
       if (cpIndex < checkpoints.length) {
-        result.get(checkpoints[cpIndex].id)!.push({ value: partValue, added: true });
+        result.get(checkpoints[cpIndex].id)!.push({ value: part.value, added: true });
       }
     } else {
-      let remaining = partValue.length;
-      let partOffset = 0;
-      while (remaining > 0 && cpIndex < checkpoints.length) {
-        const cp = checkpoints[cpIndex];
-        const cpLen = cp.text_segment.length;
-        const available = cpLen - cpOffset;
-        const take = Math.min(remaining, available);
-        if (take > 0) {
-          result.get(cp.id)!.push({ value: partValue.substring(partOffset, partOffset + take) });
+      // Both removed and unchanged parts may contain the separator
+      // Note: diffWords might group SEP with surrounding text if no spaces.
+      // But \u0000 is non-word usually.
+      const segments = part.value.split(SEP);
+      segments.forEach((seg, i) => {
+        if (i > 0) {
+          // Separator crossed
+          if (cpIndex < checkpoints.length - 1) cpIndex++;
         }
-        remaining -= take;
-        partOffset += take;
-        cpOffset += take;
-        if (cpOffset >= cpLen) { cpIndex++; cpOffset = 0; }
-      }
+        if (seg) {
+          if (cpIndex < checkpoints.length) {
+            result.get(checkpoints[cpIndex].id)!.push({
+              value: seg,
+              removed: part.removed
+            });
+          }
+        }
+      });
+    }
+  }
+
+  // Post-processing: Bind leading deletions to the previous segment
+  for (let i = 1; i < checkpoints.length; i++) {
+    const currentId = checkpoints[i].id;
+    const prevId = checkpoints[i - 1].id;
+    const currentParts = result.get(currentId)!;
+    const prevParts = result.get(prevId)!;
+
+    // Move leading deletions AND insertions from current to previous
+    while (currentParts.length > 0 && (currentParts[0].removed || currentParts[0].added)) {
+      prevParts.push(currentParts.shift()!);
     }
   }
   return result;
