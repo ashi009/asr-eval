@@ -20,15 +20,19 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
 
   useImperativeHandle(ref, () => ({
     seekTo: (time: number) => {
-      if (audioRef.current) {
-        audioRef.current.currentTime = time;
-        togglePlay(true);
-      }
+      seek(time);
     },
     pause: () => {
       togglePlay(false);
     }
   }));
+
+  const seek = (time: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      togglePlay(true);
+    }
+  };
 
   const togglePlay = (shouldPlay?: boolean) => {
     if (!audioRef.current) return;
@@ -56,8 +60,7 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
             const rect = e.currentTarget.getBoundingClientRect();
             const pct = (e.clientX - rect.left) / rect.width;
             if (audioRef.current) {
-              audioRef.current.currentTime = pct * duration;
-              togglePlay(true);
+              seek(pct * duration);
             }
           }}
         >
