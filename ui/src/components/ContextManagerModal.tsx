@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ContextResponse } from '../types';
+import { ContextResponse, Checkpoint } from '../types';
 import { ContextCreator } from './ContextCreator';
 import { ContextReviewer } from './ContextReviewer';
 import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
@@ -140,8 +140,10 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
     return initialContext ? 'Edit Evaluation Context' : 'Create Evaluation Context';
   };
 
-  const handleJump = (time: number) => {
-    audioPlayerRef.current?.seekTo(time / 1000);
+  const handleCheckpointClick = (checkpoint: Checkpoint) => {
+    if (audioPlayerRef.current && checkpoint.start_ms !== undefined) {
+      audioPlayerRef.current.seekTo(checkpoint.start_ms / 1000);
+    }
   };
 
   return (
@@ -172,7 +174,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
             initialContext={initialContext}
             onCancel={onClose}
             disablePrimary={initialContext ? !hasChanges() : false}
-            onJump={handleJump}
+            onCheckpointClick={handleCheckpointClick}
           />
         ) : (
           <ContextReviewer
@@ -183,7 +185,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
             onBack={() => setView('EDITOR')}
             onSave={handleSaveDirectly}
             onCancel={onClose}
-            onJump={handleJump}
+            onCheckpointClick={handleCheckpointClick}
           />
         )}
       </div>

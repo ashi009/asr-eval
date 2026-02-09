@@ -1,5 +1,5 @@
 import React from 'react';
-import { ContextResponse } from '../types';
+import { ContextResponse, Checkpoint } from '../types';
 import { smartDiff } from '../diffUtils';
 import { CheckpointList } from './CheckpointList';
 
@@ -11,7 +11,7 @@ interface ContextReviewerProps {
   onBack: () => void;
   onSave: () => void;
   onCancel: () => void;
-  onJump?: (time: number) => void;
+  onCheckpointClick?: (checkpoint: Checkpoint) => void;
 }
 
 export const ContextReviewer: React.FC<ContextReviewerProps> = ({
@@ -22,7 +22,7 @@ export const ContextReviewer: React.FC<ContextReviewerProps> = ({
   onBack,
   onSave,
   onCancel,
-  onJump,
+  onCheckpointClick,
 }) => {
   return (
     <>
@@ -70,11 +70,11 @@ export const ContextReviewer: React.FC<ContextReviewerProps> = ({
           {/* Checkpoints - Each side in its own container */}
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase mb-2">Checkpoints</div>
-            <CheckpointList checkpoints={oldContext.checkpoints} showWeightInBadge={true} onJump={onJump} />
+            <CheckpointList checkpoints={oldContext.checkpoints} showWeightInBadge={true} onCheckpointClick={onCheckpointClick} />
           </div>
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase mb-2">Checkpoints</div>
-            <CheckpointList checkpoints={newContext.checkpoints} showWeightInBadge={true} onJump={onJump} />
+            <CheckpointList checkpoints={newContext.checkpoints} showWeightInBadge={true} onCheckpointClick={onCheckpointClick} />
           </div>
         </div>
 

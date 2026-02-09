@@ -10,7 +10,7 @@ interface CheckpointItemProps {
   displayText?: React.ReactNode;
   showWeightInBadge?: boolean;
   isNew?: boolean;
-  onJump?: (time: number) => void;
+  onCheckpointClick?: (checkpoint: Checkpoint) => void;
 }
 
 export const CheckpointItem: React.FC<CheckpointItemProps> = ({
@@ -19,7 +19,7 @@ export const CheckpointItem: React.FC<CheckpointItemProps> = ({
   displayText,
   showWeightInBadge = true,
   isNew = false,
-  onJump,
+  onCheckpointClick,
 }) => {
   const opacity = maxWeight > 0 ? 0.5 + 0.5 * (cp.weight / maxWeight) : 1;
 
@@ -47,11 +47,11 @@ export const CheckpointItem: React.FC<CheckpointItemProps> = ({
           className={`inline rounded cursor-help transition-all duration-200 group ${cp.tier === 1 ? 'underline decoration-[3px] underline-offset-4 decoration-red-400' :
             cp.tier === 2 ? 'underline decoration-[3px] underline-offset-4 decoration-amber-400' :
               ''
-            } hover:bg-slate-100 ${isNew ? 'bg-green-50/50 decoration-green-300' : ''} ${cp.start_ms !== undefined && onJump ? 'cursor-pointer hover:bg-blue-50' : ''
+            } hover:bg-slate-100 ${isNew ? 'bg-green-50/50 decoration-green-300' : ''} ${cp.start_ms !== undefined && onCheckpointClick ? 'cursor-pointer hover:bg-blue-50' : ''
             }`}
           onClick={() => {
-            if (cp.start_ms !== undefined && onJump) {
-              onJump(cp.start_ms);
+            if (cp.start_ms !== undefined && onCheckpointClick) {
+              onCheckpointClick(cp);
             }
           }}
         >
@@ -97,7 +97,7 @@ interface CheckpointListProps {
   showWeightInBadge?: boolean;
   className?: string;
   renderDisplayText?: (checkpoint: Checkpoint) => React.ReactNode | undefined;
-  onJump?: (time: number) => void;
+  onCheckpointClick?: (checkpoint: Checkpoint) => void;
 }
 
 export const CheckpointList: React.FC<CheckpointListProps> = ({
@@ -105,7 +105,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   showWeightInBadge = true,
   className = '',
   renderDisplayText,
-  onJump,
+  onCheckpointClick,
 }) => {
   if (!checkpoints.length) return null;
 
@@ -120,7 +120,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
           maxWeight={maxWeight}
           showWeightInBadge={showWeightInBadge}
           displayText={renderDisplayText?.(cp)}
-          onJump={onJump}
+          onCheckpointClick={onCheckpointClick}
         />
       ))}
     </div>

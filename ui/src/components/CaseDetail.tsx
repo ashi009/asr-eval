@@ -7,6 +7,7 @@ import { ContextManagerModal } from './ContextManagerModal';
 import { RichTooltip } from './RichTooltip';
 import { CheckpointList } from './CheckpointList';
 import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
+import { Checkpoint } from '../types';
 
 interface CaseDetailProps {
   onEvalComplete: () => void;
@@ -131,9 +132,9 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
   const isProcessingThisCase = currentCase?.id ? processingCases.has(currentCase.id) : false;
   const evalContext = currentCase?.eval_context;
 
-  const handleJump = (timeMs: number) => {
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.seekTo(timeMs / 1000);
+  const handleCheckpointClick = (checkpoint: Checkpoint) => {
+    if (audioPlayerRef.current && checkpoint.start_ms !== undefined) {
+      audioPlayerRef.current.seekTo(checkpoint.start_ms / 1000);
     }
   };
 
@@ -210,7 +211,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
               checkpoints={evalContext.checkpoints}
               showWeightInBadge={false}
               className="py-4"
-              onJump={handleJump}
+              onCheckpointClick={handleCheckpointClick}
             />
           )}
         </div>
