@@ -6,7 +6,7 @@ import { EvalReportView } from './EvalReportView';
 import { ContextManagerModal } from './ContextManagerModal';
 import { RichTooltip } from './RichTooltip';
 import { CheckpointList } from './CheckpointList';
-import { AudioPlayer } from './AudioPlayer';
+import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
 
 interface CaseDetailProps {
   onEvalComplete: () => void;
@@ -25,6 +25,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
   const [loading, setLoading] = useState(true);
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
   const [isContextModalOpen, setIsContextModalOpen] = useState(false);
+  const audioPlayerRef = useRef<AudioPlayerHandle>(null);
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -130,6 +131,12 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
   const isProcessingThisCase = currentCase?.id ? processingCases.has(currentCase.id) : false;
   const evalContext = currentCase?.eval_context;
 
+  const handleJump = (timeMs: number) => {
+    if (audioPlayerRef.current) {
+      audioPlayerRef.current.seekTo(timeMs / 1000);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-slate-500">Loading case data...</div>;
   if (!currentCase) return <div className="p-8 text-center text-slate-500">Case not found.</div>;
 
@@ -148,7 +155,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
           </button>
         </div>
 
-        <AudioPlayer caseId={currentCase.id} className="flex-1 max-w-md" />
+        <AudioPlayer ref={audioPlayerRef} caseId={currentCase.id} className="flex-1 max-w-md" />
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3 ml-auto">
@@ -203,6 +210,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
               checkpoints={evalContext.checkpoints}
               showWeightInBadge={false}
               className="py-4"
+              onJump={handleJump}
             />
           )}
         </div>

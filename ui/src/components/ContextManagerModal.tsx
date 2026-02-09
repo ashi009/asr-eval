@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ContextResponse } from '../types';
 import { ContextCreator } from './ContextCreator';
 import { ContextReviewer } from './ContextReviewer';
-import { AudioPlayer } from './AudioPlayer';
+import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
 import { X } from 'lucide-react';
 
 interface ContextManagerModalProps {
@@ -31,6 +31,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
   const [context, setContext] = useState<ContextResponse | undefined>(initialContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const audioPlayerRef = React.useRef<AudioPlayerHandle>(null);
 
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
@@ -139,6 +140,10 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
     return initialContext ? 'Edit Evaluation Context' : 'Create Evaluation Context';
   };
 
+  const handleJump = (time: number) => {
+    audioPlayerRef.current?.seekTo(time / 1000);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 backdrop-blur-sm">
       <div className="bg-white border border-slate-200 rounded-xl shadow-2xl w-[90vw] h-[80vh] flex flex-col overflow-hidden">
@@ -147,7 +152,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
           <span className="text-sm font-bold text-slate-700 shrink-0">
             {getTitle()}
           </span>
-          <AudioPlayer caseId={caseId} className="flex-1" />
+          <AudioPlayer ref={audioPlayerRef} caseId={caseId} className="flex-1" />
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors shrink-0">
             <X size={18} />
           </button>
@@ -167,6 +172,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
             initialContext={initialContext}
             onCancel={onClose}
             disablePrimary={initialContext ? !hasChanges() : false}
+            onJump={handleJump}
           />
         ) : (
           <ContextReviewer
@@ -177,6 +183,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
             onBack={() => setView('EDITOR')}
             onSave={handleSaveDirectly}
             onCancel={onClose}
+            onJump={handleJump}
           />
         )}
       </div>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Play, Pause } from 'lucide-react';
 import { formatTime } from '../utils/formatUtils';
 
@@ -7,11 +7,27 @@ interface AudioPlayerProps {
   className?: string;
 }
 
-export function AudioPlayer({ caseId, className = '' }: AudioPlayerProps) {
+export interface AudioPlayerHandle {
+  seekTo: (time: number) => void;
+}
+
+export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ caseId, className = '' }, ref) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+
+  useImperativeHandle(ref, () => ({
+    seekTo: (time: number) => {
+      if (audioRef.current) {
+        audioRef.current.currentTime = time;
+        if (audioRef.current.paused) {
+          audioRef.current.play();
+          setIsPlaying(true);
+        }
+      }
+    }
+  }));
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -54,4 +70,4 @@ export function AudioPlayer({ caseId, className = '' }: AudioPlayerProps) {
       />
     </div>
   );
-}
+});

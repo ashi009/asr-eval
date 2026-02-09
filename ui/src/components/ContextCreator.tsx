@@ -16,6 +16,7 @@ interface ContextCreatorProps {
   initialContext?: ContextResponse;
   onCancel: () => void;
   disablePrimary?: boolean;
+  onJump?: (time: number) => void;
 }
 
 export const ContextCreator: React.FC<ContextCreatorProps> = ({
@@ -30,6 +31,7 @@ export const ContextCreator: React.FC<ContextCreatorProps> = ({
   initialContext,
   onCancel,
   disablePrimary,
+  onJump,
 }) => {
   const [showAudioReality, setShowAudioReality] = useState(false);
 
@@ -163,6 +165,7 @@ export const ContextCreator: React.FC<ContextCreatorProps> = ({
                   showWeightInBadge={true}
                   className="pb-4"
                   renderDisplayText={(cp) => segmentDiffs?.has(cp.id) ? renderDiffParts(segmentDiffs.get(cp.id)!) : undefined}
+                  onJump={onJump}
                 />
               </div>
             </div>

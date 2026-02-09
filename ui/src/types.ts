@@ -38,6 +38,7 @@ export interface LoadingData {
 // v2 Types
 export interface Checkpoint {
   id: string;
+  start_ms?: number;
   text_segment: string;
   tier: number;
   weight: number;
