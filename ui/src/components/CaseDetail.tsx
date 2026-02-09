@@ -5,7 +5,7 @@ import { Case, LoadingData, ContextResponse } from '../types';
 import { EvalReportView } from './EvalReportView';
 import { ContextManagerModal } from './ContextManagerModal';
 import { RichTooltip } from './RichTooltip';
-import { CheckpointList } from './CheckpointList';
+import { EvalContextDisplay } from './EvalContextDisplay';
 import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
 import { Checkpoint } from '../types';
 
@@ -199,25 +199,13 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
 
       {/* Context View Panel - Business Goal + GT with Checkpoints */}
       {evalContext && (
-        <div className="bg-slate-50 border-b border-slate-200 px-8 py-4 shrink-0">
-          {/* Business Goal Summary */}
-          <div className="">
-            <p className="text-sm text-slate-700 leading-relaxed italic opacity-80">{evalContext.meta.business_goal}</p>
-          </div>
-
-
-
-
-
-          {evalContext && (
-            <CheckpointList
-              checkpoints={evalContext.checkpoints}
-              showWeightInBadge={false}
-              className="py-4"
-              onCheckpointClick={handleCheckpointClick}
-            />
-          )}
-        </div>
+        <EvalContextDisplay
+          context={evalContext}
+          enableAudioRealityToggle={true}
+          showWeightInBadge={false}
+          onCheckpointClick={handleCheckpointClick}
+          className="bg-slate-50 border-b border-slate-200 px-8 py-4 shrink-0"
+        />
       )}
 
       {/* No Context - Show CTA inline */}

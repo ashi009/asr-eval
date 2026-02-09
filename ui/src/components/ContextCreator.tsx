@@ -1,8 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { ContextResponse, Checkpoint } from '../types';
-import { AlertTriangle, RefreshCw, Copy } from 'lucide-react';
-import { smartDiff } from '../diffUtils';
-import { CheckpointList } from './CheckpointList';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { EvalContextDisplay } from './EvalContextDisplay';
 
 interface ContextCreatorProps {
   gtText: string;
@@ -33,14 +32,6 @@ export const ContextCreator: React.FC<ContextCreatorProps> = ({
   disablePrimary,
   onCheckpointClick,
 }) => {
-  const [showAudioReality, setShowAudioReality] = useState(false);
-
-  // Audio reality diff overlay
-  const segmentDiffs = useMemo(() => {
-    if (!showAudioReality || !context?.meta.audio_reality_inference) return null;
-    return computeSegmentedDiff(context.checkpoints, context.meta.audio_reality_inference);
-  }, [showAudioReality, context]);
-
   // Context is stale if GT changed since generation
   const isStale = context && gtAtGeneration !== null && gtText !== gtAtGeneration;
   // If we have initial context (editing), we can save only if context exists and not stale.
@@ -126,64 +117,13 @@ export const ContextCreator: React.FC<ContextCreatorProps> = ({
               </div>
             </div>
           ) : context ? (
-            <div className="flex-1 flex flex-col min-h-0">
-              {/* Business Goal */}
-              <p className="text-sm text-slate-600 leading-relaxed italic mb-3 shrink-0">
-                {context.meta.business_goal}
-              </p>
-
-              {/* Checkpoints List - matching CaseDetail style with tooltips */}
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {/* Toggle for audio reality */}
-                {context.meta.audio_reality_inference && (
-                  <div className="flex items-center mb-4">
-                    <div className="flex items-center bg-slate-100 rounded-full p-0.5">
-                      <button
-                        onClick={() => setShowAudioReality(false)}
-                        className={`text-[10px] font-medium px-3 py-1 rounded-full transition-colors ${!showAudioReality
-                          ? 'bg-white text-slate-700 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                      >
-                        Ground Truth
-                      </button>
-                      <button
-                        onClick={() => setShowAudioReality(true)}
-                        className={`text-[10px] font-medium px-3 py-1 rounded-full transition-colors ${showAudioReality
-                          ? 'bg-white text-slate-700 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                      >
-                        Audio Reality Inference
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        const text = showAudioReality
-                          ? context.meta.audio_reality_inference
-                          : context.meta.ground_truth;
-                        navigator.clipboard.writeText(text);
-                        // Brief success state could be added here if desired, but user just asked for the button
-                        // To keep it simple and consistent with other copy buttons that just do it:
-                      }}
-                      className="ml-2 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                      title={showAudioReality ? "Copy Audio Reality Inference" : "Copy Ground Truth"}
-                    >
-                      <Copy size={14} />
-                    </button>
-                  </div>
-                )}
-
-                <CheckpointList
-                  checkpoints={context.checkpoints}
-                  showWeightInBadge={true}
-                  className="pb-4"
-                  renderDisplayText={(cp) => segmentDiffs?.has(cp.id) ? renderDiffParts(segmentDiffs.get(cp.id)!) : undefined}
-                  onCheckpointClick={onCheckpointClick}
-                />
-              </div>
-            </div>
+            <EvalContextDisplay
+              context={context}
+              enableAudioRealityToggle={true}
+              showWeightInBadge={true}
+              onCheckpointClick={onCheckpointClick}
+              className="flex-1 min-h-0"
+            />
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-300 italic text-sm">
               No context generated yet. Click Generate to create.
@@ -208,84 +148,3 @@ export const ContextCreator: React.FC<ContextCreatorProps> = ({
     </>
   );
 };
-
-// --- Helper functions for audio reality diff ---
-
-interface SegmentDiffPart {
-  value: string;
-  added?: boolean;
-  removed?: boolean;
-}
-
-function computeSegmentedDiff(
-  checkpoints: Checkpoint[],
-  audioReality: string
-): Map<string, SegmentDiffPart[]> {
-  // Use a special separator character to guide segmentation
-  const SEP = '\u0000';
-  const joinedSegments = checkpoints.map(cp => cp.text_segment).join(SEP);
-  // smartDiff relies on diffWords which might split by words.
-  // We need to ensure the separator text is treated uniquely if possible,
-  // but diffWords generally works on whitespace.
-  // However, since we are doing character-based diff essentially (or word based),
-  // if SEP is distinct it should appear in the diff.
-  const diffs = smartDiff(joinedSegments, audioReality, true);
-
-  const result = new Map<string, SegmentDiffPart[]>();
-  checkpoints.forEach(cp => result.set(cp.id, []));
-
-  let cpIndex = 0;
-
-  for (const part of diffs) {
-    if (part.added) {
-      if (cpIndex < checkpoints.length) {
-        result.get(checkpoints[cpIndex].id)!.push({ value: part.value, added: true });
-      }
-    } else {
-      // Both removed and unchanged parts may contain the separator
-      // Note: diffWords might group SEP with surrounding text if no spaces.
-      // But \u0000 is non-word usually.
-      const segments = part.value.split(SEP);
-      segments.forEach((seg, i) => {
-        if (i > 0) {
-          // Separator crossed
-          if (cpIndex < checkpoints.length - 1) cpIndex++;
-        }
-        if (seg) {
-          if (cpIndex < checkpoints.length) {
-            result.get(checkpoints[cpIndex].id)!.push({
-              value: seg,
-              removed: part.removed
-            });
-          }
-        }
-      });
-    }
-  }
-
-  // Post-processing: Bind leading deletions to the previous segment
-  for (let i = 1; i < checkpoints.length; i++) {
-    const currentId = checkpoints[i].id;
-    const prevId = checkpoints[i - 1].id;
-    const currentParts = result.get(currentId)!;
-    const prevParts = result.get(prevId)!;
-
-    // Move leading deletions AND insertions from current to previous
-    while (currentParts.length > 0 && (currentParts[0].removed || currentParts[0].added)) {
-      prevParts.push(currentParts.shift()!);
-    }
-  }
-  return result;
-}
-
-function renderDiffParts(parts: SegmentDiffPart[]): React.ReactNode {
-  return (
-    <span>
-      {parts.map((part, i) => {
-        if (part.added) return <span key={i} className="text-green-600 font-medium">{part.value}</span>;
-        if (part.removed) return <span key={i} className="text-red-400 line-through">{part.value}</span>;
-        return <span key={i}>{part.value}</span>;
-      })}
-    </span>
-  );
-}
