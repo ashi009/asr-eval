@@ -17,69 +17,23 @@ interface EvalReportViewProps {
   isProcessing?: boolean;
 }
 
-// Unified result interface for rendering
-interface UnifiedResult {
-  score: number;
-  s_score?: number;
-  p_score?: number;
-  transcript?: string;
-  revised_transcript?: string;
-  summary?: string[];
-  checkpoint_results?: Record<string, any>;
-}
-
-function getUnifiedResults(kase: Case): Record<string, UnifiedResult> {
-  // Prefer v2 if available
-  const v2Evals = kase.report_v2?.evaluations;
-  if (v2Evals && Object.keys(v2Evals).length > 0) {
-    const results: Record<string, UnifiedResult> = {};
-    for (const [provider, ev] of Object.entries(v2Evals)) {
-      results[provider] = {
-        score: ev.metrics.Q_score, // Now an integer (0-100) from backend
-        s_score: ev.metrics.S_score,
-        p_score: ev.metrics.P_score,
-        transcript: ev.transcript,
-        revised_transcript: ev.revised_transcript,
-        summary: ev.summary,
-        checkpoint_results: ev.checkpoint_results,
-      };
-    }
-    return results;
-  }
-  // Fallback to v1
-  const v1Results = kase.eval_report?.eval_results;
-  if (v1Results) {
-    const results: Record<string, UnifiedResult> = {};
-    for (const [provider, res] of Object.entries(v1Results)) {
-      results[provider] = {
-        score: Math.round(res.score * 100), // Convert v1 (0-1) to 0-100
-        transcript: res.transcript,
-        revised_transcript: res.revised_transcript,
-        summary: res.summary,
-      };
-    }
-    return results;
-  }
-  return {};
-}
-
 export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSelectAll, onDeselectAll, onSelectDefault, getDefaultSelection, isProcessing }: EvalReportViewProps) {
-  const evalResults = getUnifiedResults(kase);
+  const evalResults = kase.report_v2?.evaluations || {};
   const hasAI = Object.keys(evalResults).length > 0;
 
   const providers = Array.from(new Set([
     ...Object.keys(evalResults),
     ...Object.keys(kase.transcripts || {})
   ]));
-  const sortedPerformers = Object.entries(evalResults).sort((a, b) => b[1].score - a[1].score);
+  const sortedPerformers = Object.entries(evalResults).sort((a, b) => b[1].metrics.Q_score - a[1].metrics.Q_score);
 
   const [diffModes, setDiffModes] = useState<Record<string, 'eval' | 'drift' | 'gap'>>({});
   const [sortBy, setSortBy] = useState<'score' | 'name'>('score');
 
   const sortedProviders = [...providers].sort((a, b) => {
     if (sortBy === 'score') {
-      const scoreA = evalResults[a]?.score ?? -1;
-      const scoreB = evalResults[b]?.score ?? -1;
+      const scoreA = evalResults[a]?.metrics.Q_score ?? -1;
+      const scoreB = evalResults[b]?.metrics.Q_score ?? -1;
       if (scoreB !== scoreA) return scoreB - scoreA;
       return getASRProviderConfig(a).name.localeCompare(getASRProviderConfig(b).name);
     } else {
@@ -121,7 +75,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
               <div className="relative w-full h-full">
                 {/* Score Dots with Tooltips */}
                 {sortedPerformers.map(([p, res]) => {
-                  const score = res.score;
+                  const score = res.metrics.Q_score;
                   const config = getASRProviderConfig(p);
                   return (
                     <RichTooltip
@@ -191,7 +145,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
       <div className="flex-1 overflow-y-auto min-h-0 px-8">
         {sortedProviders.map((p) => {
           const aiRes = evalResults[p];
-          const score = aiRes ? aiRes.score : null;
+          const score = aiRes ? aiRes.metrics.Q_score : null;
           const config = getASRProviderConfig(p);
           const { color, name } = config;
           const isSelected = !!selectedProviders?.[p];
@@ -296,9 +250,9 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
                     <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
                       {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
                     </div>
-                    {aiRes?.s_score !== undefined && aiRes?.p_score !== undefined && (
+                    {aiRes?.metrics.S_score !== undefined && aiRes?.metrics.P_score !== undefined && (
                       <div className="text-[10px] text-slate-400 font-medium mt-0.5 font-mono">
-                        S{Math.round(aiRes.s_score * 100)} P{Math.round(aiRes.p_score * 100)}
+                        S{Math.round(aiRes.metrics.S_score * 100)} P{Math.round(aiRes.metrics.P_score * 100)}
                       </div>
                     )}
                   </>

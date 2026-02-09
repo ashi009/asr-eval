@@ -124,8 +124,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
       eval_context: ctx,
       ground_truth: gt,
       // Clear reports to reflect that they are now stale/invalid until re-run
-      report_v2: undefined,
-      eval_report: undefined
+      report_v2: undefined
     });
   };
 
@@ -236,7 +235,6 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
           onSelectAll={() => {
             const allProviders = new Set([
               ...Object.keys(currentCase.transcripts || {}),
-              ...Object.keys(currentCase.eval_report?.eval_results || {})
             ]);
             const newSelection: Record<string, boolean> = {};
             allProviders.forEach(p => newSelection[p] = true);

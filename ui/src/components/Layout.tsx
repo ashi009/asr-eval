@@ -3,7 +3,7 @@ import { Routes, Route, NavLink } from 'react-router-dom';
 import { AudioLines, Search, Loader2 } from 'lucide-react';
 import { getASRProviderConfig, isProviderEnabled, setEnabledProviders } from '../config';
 import { Case, LoadingData } from '../types';
-import { isResultStale } from '../utils/evalUtils';
+
 import { CaseDetail } from './CaseDetail';
 import { RichTooltip } from './RichTooltip';
 
@@ -17,18 +17,27 @@ export function Layout() {
   const initSelection = (data: LoadingData) => {
     const initialSelection: Record<string, boolean> = {};
 
-    const results = data.eval_report?.eval_results || data.results || {};
+    const evaluations = data.report_v2?.evaluations;
+    const hasEvaluations = evaluations && Object.keys(evaluations).length > 0;
 
     const providerKeys = new Set([
       ...Object.keys(data.transcripts || {}),
-      ...Object.keys(results)
+      ...(hasEvaluations ? Object.keys(evaluations || {}) : [])
     ]);
 
     providerKeys.forEach(provider => {
       const isEnabled = isProviderEnabled(provider);
+      const currentTranscript = data.transcripts?.[provider];
 
-      const hasResult = !!results[provider];
-      const isStale = hasResult && isResultStale(data.transcripts?.[provider], results[provider]);
+      let hasResult = false;
+      let isStale = false;
+
+      if (hasEvaluations && evaluations?.[provider]) {
+        hasResult = true;
+        const res = evaluations[provider];
+        // stale if transcript in result differs from current
+        isStale = !!res.transcript && currentTranscript !== res.transcript;
+      }
 
       initialSelection[provider] = isEnabled && (!hasResult || isStale);
     });
