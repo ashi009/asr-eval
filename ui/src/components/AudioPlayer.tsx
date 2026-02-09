@@ -22,23 +22,20 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
     seekTo: (time: number) => {
       if (audioRef.current) {
         audioRef.current.currentTime = time;
-        if (audioRef.current.paused) {
-          audioRef.current.play();
-          setIsPlaying(true);
-        }
+        togglePlay(true);
       }
     },
     pause: () => {
-      if (audioRef.current && !audioRef.current.paused) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      }
+      togglePlay(false);
     }
   }));
 
-  const togglePlay = () => {
+  const togglePlay = (shouldPlay?: boolean) => {
     if (!audioRef.current) return;
-    if (audioRef.current.paused) {
+
+    const targetState = shouldPlay !== undefined ? shouldPlay : audioRef.current.paused;
+
+    if (targetState) {
       audioRef.current.play();
       setIsPlaying(true);
     } else {
@@ -49,7 +46,7 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
-      <button onClick={togglePlay} className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center hover:opacity-90 shrink-0">
+      <button onClick={() => togglePlay()} className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center hover:opacity-90 shrink-0">
         {isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
       </button>
       <div className="flex-1">
@@ -60,7 +57,7 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
             const pct = (e.clientX - rect.left) / rect.width;
             if (audioRef.current) {
               audioRef.current.currentTime = pct * duration;
-              if (audioRef.current.paused) { audioRef.current.play(); setIsPlaying(true); }
+              togglePlay(true);
             }
           }}
         >
