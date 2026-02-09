@@ -148,8 +148,8 @@ function computeSegmentedDiff(
     const currentParts = result.get(currentId)!;
     const prevParts = result.get(prevId)!;
 
-    // Move leading deletions AND insertions from current to previous
-    while (currentParts.length > 0 && (currentParts[0].removed || currentParts[0].added)) {
+    // Move leading insertions from current to previous
+    while (currentParts.length > 0 && currentParts[0].added) {
       prevParts.push(currentParts.shift()!);
     }
   }
