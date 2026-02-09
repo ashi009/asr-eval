@@ -16,6 +16,23 @@ type EvalReport struct {
 	ContextSnapshot EvalContext           `json:"context_snapshot,omitempty"`
 }
 
+// EvalReport2 represents the output of Step 2 (V2) ([id].report.v2.json)
+type EvalReport2 struct {
+	Results         map[string]EvalResult2 `json:"evaluations"`
+	ContextHash     string                 `json:"context_hash,omitempty"`
+	ContextSnapshot EvalContext            `json:"context_snapshot,omitempty"`
+}
+
+// EvalResult2 represents the evaluation result for a single model (Map based) for V2
+type EvalResult2 struct {
+	Transcript        string                      `json:"transcript"`
+	RevisedTranscript string                      `json:"revised_transcript"`
+	Metrics           EvalMetrics                 `json:"metrics"`
+	CheckpointResults map[string]CheckpointResult `json:"checkpoint_results"`
+	PhoneticAnalysis  PhoneticAnalysis            `json:"phonetic_analysis"`
+	Summary           []string                    `json:"summary"`
+}
+
 // ContextMeta contains metadata for the context
 type ContextMeta struct {
 	BusinessGoal            string `json:"business_goal"`
@@ -29,6 +46,7 @@ type ContextMeta struct {
 // Checkpoint represents a hierarchical evaluation point
 type Checkpoint struct {
 	ID          string  `json:"id"`
+	StartMS     int     `json:"start_ms"`
 	TextSegment string  `json:"text_segment"`
 	Tier        int     `json:"tier"`
 	Weight      float64 `json:"weight"`
@@ -88,4 +106,11 @@ type CheckpointResult struct {
 	Status   CheckpointStatus `json:"status"`
 	Detected string           `json:"detected"`         // text segment identified
 	Reason   string           `json:"reason,omitempty"` // Reason for failure
+}
+
+// PhoneticAnalysis holds detailed error chunks for PER calculation
+type PhoneticAnalysis struct {
+	Insertions    []string `json:"insertions"`
+	Deletions     []string `json:"deletions"`
+	Substitutions []string `json:"substitutions"`
 }

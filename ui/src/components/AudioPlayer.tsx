@@ -9,6 +9,7 @@ interface AudioPlayerProps {
 
 export interface AudioPlayerHandle {
   seekTo: (time: number) => void;
+  pause: () => void;
 }
 
 export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ caseId, className = '' }, ref) => {
@@ -25,6 +26,12 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
           audioRef.current.play();
           setIsPlaying(true);
         }
+      }
+    },
+    pause: () => {
+      if (audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+        setIsPlaying(false);
       }
     }
   }));

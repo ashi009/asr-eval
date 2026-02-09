@@ -179,7 +179,10 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
           )}
 
           <button
-            onClick={() => setIsContextModalOpen(true)}
+            onClick={() => {
+              audioPlayerRef.current?.pause();
+              setIsContextModalOpen(true);
+            }}
             className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
           >
             <Settings size={12} /> {evalContext ? 'Manage Context' : 'Create Context'}
@@ -224,7 +227,10 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
           <h3 className="text-sm font-bold text-amber-800 mb-1">No Evaluation Context</h3>
           <p className="text-xs text-amber-600 mb-3">Generate context from ground truth to see checkpoints and enable evaluation.</p>
           <button
-            onClick={() => setIsContextModalOpen(true)}
+            onClick={() => {
+              audioPlayerRef.current?.pause();
+              setIsContextModalOpen(true);
+            }}
             className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
           >
             Create Context

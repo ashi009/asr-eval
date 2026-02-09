@@ -164,6 +164,160 @@ func (e *Evaluator) Evaluate(ctx context.Context, contextData *EvalContext, tran
 	return resp, usage, nil
 }
 
+func (e *Evaluator) EvaluateV2(ctx context.Context, contextData *EvalContext, transcripts map[string]string) (*EvalReport2, *genai.GenerateContentResponseUsageMetadata, error) {
+	// Use V2 Prompt
+	p, err := buildEvaluatePromptV2(evaluatePromptData{
+		EvalContext: contextData,
+		Transcripts: transcripts,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build eval prompt: %w", err)
+	}
+
+	req := []*genai.Content{
+		{
+			Parts: []*genai.Part{
+				genai.NewPartFromText(p),
+			},
+		},
+	}
+
+	cfg := &genai.GenerateContentConfig{
+		ThinkingConfig: &genai.ThinkingConfig{
+			ThinkingLevel: genai.ThinkingLevelLow,
+		},
+	}
+
+	// 1. Define Intermediate Structs for LLM (must use Slices, not Maps)
+	type llmCheckpointResultV2 struct {
+		ID       string           `json:"id"`
+		Status   CheckpointStatus `json:"status" jsonscheme:"enum:Pass,Fail,Partial"`
+		Detected string           `json:"detected"`         // text segment identified
+		Reason   string           `json:"reason,omitempty"` // Reason for failure
+	}
+
+	type llmEvalResultV2 struct {
+		Provider          string                  `json:"provider"`
+		RevisedTranscript string                  `json:"revised_transcript"`
+		CheckpointResults []llmCheckpointResultV2 `json:"checkpoint_results"`
+		PhoneticAnalysis  PhoneticAnalysis        `json:"phonetic_analysis"`
+		Summary           []string                `json:"summary"`
+	}
+
+	type llmEvalReportV2 []llmEvalResultV2
+
+	var raw llmEvalReportV2
+	usage, err := e.generateJSON(ctx, e.evalModel, req, cfg, &raw)
+	if err != nil {
+		return nil, usage, err
+	}
+
+	// 2. Convert to Final Report (converting Slice -> Map)
+	resp := &EvalReport2{
+		Results: make(map[string]EvalResult2),
+	}
+
+	for _, item := range raw {
+		// Convert Checkpoints Slice -> Map
+		cps := make(map[string]CheckpointResult)
+		for _, cp := range item.CheckpointResults {
+			cps[cp.ID] = CheckpointResult{
+				Status:   cp.Status,
+				Detected: cp.Detected,
+				Reason:   cp.Reason,
+			}
+		}
+
+		// Create EvalResult2
+		// Note: Metrics will be populated after calculation
+		resultV2 := EvalResult2{
+			Transcript:        transcripts[item.Provider],
+			RevisedTranscript: item.RevisedTranscript,
+			CheckpointResults: cps,
+			PhoneticAnalysis:  item.PhoneticAnalysis,
+			Summary:           item.Summary,
+		}
+
+		// Calculate Metrics in Go using the constructed ResultV2
+		metrics := e.calculateMetrics(&resultV2, contextData)
+		resultV2.Metrics = metrics
+
+		resp.Results[item.Provider] = resultV2
+	}
+
+	return resp, usage, nil
+}
+
+func (e *Evaluator) calculateMetrics(item *EvalResult2, ctx *EvalContext) EvalMetrics {
+	// 1. Calculate S-Score
+	passedWeight := 0.0
+	totalWeight := 0.0
+
+	// Create a map for fast lookup of result status
+	resMap := item.CheckpointResults
+
+	for _, cp := range ctx.Checkpoints {
+		totalWeight += cp.Weight
+		if res, ok := resMap[cp.ID]; ok {
+			switch res.Status {
+			case StatusPass:
+				passedWeight += cp.Weight
+			case StatusPartial:
+				// Only for Tier 2/3 (enforced by LLM prompt usually, but good to check)
+				passedWeight += cp.Weight * 0.5
+			case StatusFail:
+				passedWeight += 0.0
+			}
+		}
+	}
+
+	sScore := 0.0
+	if totalWeight > 0 {
+		sScore = passedWeight / totalWeight
+	}
+
+	// 2. Calculate P-Score (PER)
+	// Reference is the "Audio Reality Inference"
+	// We'll estimate N (number of words) by splitting by space roughly
+	// For production, a better tokenizer might be needed, but space split is standard for WER/PER approx.
+	// Actually, context.Meta.AudioRealityInference might be CJK, so simple space split isn't enough.
+	// However, for this refactor, we assume space-separated words or characters depending on language.
+	// Let's use a simple tokenizer: strings.Fields
+	// Let's use a simple tokenizer: strings.Fields
+	// If it's English, fields is better. If CJK, rune count.
+	// Since we don't have a language detector here easily, and the prompt asks for "Audio Reality Inference",
+	// let's assume we count *characters* for P-Score denominator if it looks like CJK, or *words* if English.
+	// For simplicity in this V2 step, let's just use a naive token count provided by the prompt data if available,
+	// OR just use rune count for now as a baseline for robustness.
+	// WAIT: content.Meta.TotalTokenCountEstimate is available! Use that?
+	// It says "approximated count of tokens". Let's use that as the denominator N.
+	N := float64(ctx.Meta.TotalTokenCountEstimate)
+	if N <= 0 {
+		N = 1.0 // Prevent division by zero
+	}
+
+	ins := len(item.PhoneticAnalysis.Insertions)
+	del := len(item.PhoneticAnalysis.Deletions)
+	sub := len(item.PhoneticAnalysis.Substitutions)
+
+	per := float64(ins+del+sub) / N
+	pScore := 1.0 - per
+	if pScore < 0 {
+		pScore = 0
+	}
+
+	return EvalMetrics{
+		SScore: sScore,
+		PScore: pScore,
+		// QScore is calculated on the fly by the struct method
+		PhoneticDetails: PhoneticDetails{
+			Ins: ins,
+			Del: del,
+			Sub: sub,
+		},
+	}
+}
+
 func (e *Evaluator) generateJSON(ctx context.Context, model string, req []*genai.Content, cfg *genai.GenerateContentConfig, resp interface{}) (*genai.GenerateContentResponseUsageMetadata, error) {
 	// Automatically generate schema and set JSON response type
 	cfg.ResponseMIMEType = "application/json"
