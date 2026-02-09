@@ -134,7 +134,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
 
   const handleCheckpointClick = (checkpoint: Checkpoint) => {
     if (audioPlayerRef.current && checkpoint.start_ms !== undefined) {
-      audioPlayerRef.current.seekTo(checkpoint.start_ms / 1000);
+      audioPlayerRef.current.seek(checkpoint.start_ms / 1000);
     }
   };
 

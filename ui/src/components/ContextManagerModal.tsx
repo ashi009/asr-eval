@@ -142,7 +142,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
 
   const handleCheckpointClick = (checkpoint: Checkpoint) => {
     if (audioPlayerRef.current && checkpoint.start_ms !== undefined) {
-      audioPlayerRef.current.seekTo(checkpoint.start_ms / 1000);
+      audioPlayerRef.current.seek(checkpoint.start_ms / 1000);
     }
   };
 

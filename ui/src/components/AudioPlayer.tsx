@@ -8,7 +8,7 @@ interface AudioPlayerProps {
 }
 
 export interface AudioPlayerHandle {
-  seekTo: (time: number) => void;
+  seek: (time: number) => void;
   pause: () => void;
 }
 
@@ -19,7 +19,7 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(({ ca
   const [duration, setDuration] = useState(0);
 
   useImperativeHandle(ref, () => ({
-    seekTo: (time: number) => {
+    seek: (time: number) => {
       seek(time);
     },
     pause: () => {
