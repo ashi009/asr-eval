@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { AudioLines, Search, Loader2 } from 'lucide-react';
+import { AudioLines, Search, Loader2, BarChart3 } from 'lucide-react';
 import { getASRProviderConfig, isProviderEnabled, setEnabledProviders } from '../config';
 import { Case } from '../types';
 
 import { CaseDetail } from './CaseDetail';
 import { RichTooltip } from './RichTooltip';
+import { StatsDashboard } from './StatsDashboard';
 
 
 export function Layout() {
@@ -84,6 +85,7 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isOverlay, setIsOverlay] = useState(false);
   const [llmModel, setLlmModel] = useState<string>("");
+  const [statsOpen, setStatsOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/config')
@@ -141,6 +143,13 @@ export function Layout() {
               <div className="flex items-center gap-2">
                 <AudioLines className="text-primary" />
                 <h1 className="font-bold">ASR Eval Pro</h1>
+                <button
+                  onClick={() => setStatsOpen(true)}
+                  className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-primary transition-colors"
+                  title="View Statistics"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </button>
               </div>
               {llmModel && (
                 <div className="text-[10px] font-mono text-slate-500 pl-8 opacity-80">
@@ -276,6 +285,8 @@ export function Layout() {
 
         </Routes>
       </main>
+
+      <StatsDashboard cases={cases} isOpen={statsOpen} onClose={() => setStatsOpen(false)} />
     </div>
   );
 }
