@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { AlertTriangle, Settings, Copy, Play } from 'lucide-react';
-import { Case, LoadingData, EvalContext } from '../types';
+import { Case, EvalContext } from '../types';
 import { EvalReportView } from './EvalReportView';
 import { ContextManagerModal } from './ContextManagerModal';
 import { RichTooltip } from './RichTooltip';
@@ -16,7 +16,7 @@ interface CaseDetailProps {
   endProcessing: (id: string) => void;
   getSelection: (id: string) => Record<string, boolean>;
   setSelectionForCase: (id: string, newVal: Record<string, boolean>) => void;
-  initSelection: (data: LoadingData) => Record<string, boolean>;
+  initSelection: (data: Case) => Record<string, boolean>;
 }
 
 export function CaseDetail({ onEvalComplete, processingCases, startProcessing, endProcessing, getSelection, setSelectionForCase, initSelection }: CaseDetailProps) {

@@ -11,18 +11,7 @@ export interface Case {
   report_v2?: EvalReport;
 }
 
-export interface LoadingData {
-  id: string;
 
-  transcripts: Record<string, string>;
-  isLoading?: boolean;
-  error?: string;
-  has_ai?: boolean;
-  ground_truth?: string;
-  evaluated_ground_truth?: string;
-  eval_context?: EvalContext;
-  report_v2?: EvalReport;
-}
 
 // v2 Types
 export interface Checkpoint {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import { AudioLines, Search, Loader2 } from 'lucide-react';
 import { getASRProviderConfig, isProviderEnabled, setEnabledProviders } from '../config';
-import { Case, LoadingData } from '../types';
+import { Case } from '../types';
 
 import { CaseDetail } from './CaseDetail';
 import { RichTooltip } from './RichTooltip';
@@ -14,7 +14,7 @@ export function Layout() {
   const [processingCases, setProcessingCases] = useState<Set<string>>(new Set());
   const [caseSelections, setCaseSelections] = useState<Record<string, Record<string, boolean>>>({});
 
-  const initSelection = (data: LoadingData) => {
+  const initSelection = (data: Case) => {
     const initialSelection: Record<string, boolean> = {};
 
     const evaluations = data.report_v2?.evaluations;
