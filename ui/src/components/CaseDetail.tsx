@@ -175,75 +175,75 @@ export function CaseDetail({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="min-h-full flex flex-col">
-          {/* Context View Panel - Business Goal + GT with Checkpoints */}
-          {evalContext && (
-            <EvalContextDisplay
-              context={evalContext}
-              enableAudioRealityToggle={true}
-              showWeightInBadge={false}
-              onCheckpointClick={handleCheckpointClick}
-              className="bg-slate-50 border-b border-slate-200 px-8 py-4 shrink-0"
-            />
-          )}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Context View Panel - Business Goal + GT with Checkpoints */}
+        {evalContext && (
+          <EvalContextDisplay
+            context={evalContext}
+            enableAudioRealityToggle={true}
+            showWeightInBadge={false}
+            onCheckpointClick={handleCheckpointClick}
+            className="bg-slate-50 border-b border-slate-200 px-8 py-4 shrink-0"
+          />
+        )}
 
-          {/* No Context - Show CTA inline */}
-          {!evalContext && (
-            <div className="bg-amber-50 border-b border-amber-200 px-8 py-6 shrink-0 text-center">
-              <AlertTriangle size={24} className="text-amber-500 mx-auto mb-2" />
-              <h3 className="text-sm font-bold text-amber-800 mb-1">No Evaluation Context</h3>
-              <p className="text-xs text-amber-600 mb-3">Generate context from ground truth to see checkpoints and enable evaluation.</p>
-              <button
-                onClick={() => {
-                  audioPlayerRef.current?.pause();
-                  setIsContextModalOpen(true);
-                }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
-              >
-                Create Context
-              </button>
+        {/* No Context - Show CTA inline */}
+        {!evalContext && (
+          <div className="bg-amber-50 border-b border-amber-200 px-8 py-6 shrink-0 text-center">
+            <AlertTriangle size={24} className="text-amber-500 mx-auto mb-2" />
+            <h3 className="text-sm font-bold text-amber-800 mb-1">No Evaluation Context</h3>
+            <p className="text-xs text-amber-600 mb-3">Generate context from ground truth to see checkpoints and enable evaluation.</p>
+            <button
+              onClick={() => {
+                audioPlayerRef.current?.pause();
+                setIsContextModalOpen(true);
+              }}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
+            >
+              Create Context
+            </button>
+          </div>
+        )}
+
+        {/* Eval Report View */}
+        <div className="flex-1 bg-white relative flex flex-col min-h-0">
+          {(currentCase.report_v2 || (currentCase.transcripts && Object.keys(currentCase.transcripts).length > 0)) ? (
+            <EvalReportView
+              key={currentCase.id}
+              kase={currentCase} // Pass kase as simplified ReportView expects
+              selectedProviders={selectedProviders}
+              onToggleProvider={toggleProvider}
+              onSelectAll={() => {
+                const newSelection: Record<string, boolean> = {};
+                Object.keys(currentCase.transcripts || {}).forEach(p => newSelection[p] = true);
+                setSelectionForCase(id!, newSelection);
+              }}
+              onDeselectAll={() => setSelectionForCase(id!, {})}
+              onSelectDefault={() => setSelectionForCase(id!, initSelection(currentCase))}
+              getDefaultSelection={() => initSelection(currentCase)}
+              isProcessing={isProcessingThisCase}
+            />
+          ) : (
+            <div className="text-center py-20 text-slate-400">
+              <p>No transcripts or evaluation report available.</p>
             </div>
           )}
-
-          {/* Eval Report View */}
-          <div className="flex-1 bg-white relative">
-            {(currentCase.report_v2 || (currentCase.transcripts && Object.keys(currentCase.transcripts).length > 0)) ? (
-              <EvalReportView
-                key={currentCase.id}
-                kase={currentCase} // Pass kase as simplified ReportView expects
-                selectedProviders={selectedProviders}
-                onToggleProvider={toggleProvider}
-                onSelectAll={() => {
-                  const newSelection: Record<string, boolean> = {};
-                  Object.keys(currentCase.transcripts || {}).forEach(p => newSelection[p] = true);
-                  setSelectionForCase(id!, newSelection);
-                }}
-                onDeselectAll={() => setSelectionForCase(id!, {})}
-                onSelectDefault={() => setSelectionForCase(id!, initSelection(currentCase))}
-                getDefaultSelection={() => initSelection(currentCase)}
-                isProcessing={isProcessingThisCase}
-              />
-            ) : (
-              <div className="text-center py-20 text-slate-400">
-                <p>No transcripts or evaluation report available.</p>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
       {/* Context Manager Modal */}
-      {isContextModalOpen && (
-        <ContextManagerModal
-          isOpen={isContextModalOpen}
-          onClose={() => setIsContextModalOpen(false)}
-          caseId={currentCase.id}
-          initialGT={currentCase.eval_context?.meta?.ground_truth || ""}
-          initialContext={currentCase.eval_context}
-          onSave={handleContextSave}
-        />
-      )}
-    </div>
+      {
+        isContextModalOpen && (
+          <ContextManagerModal
+            isOpen={isContextModalOpen}
+            onClose={() => setIsContextModalOpen(false)}
+            caseId={currentCase.id}
+            initialGT={currentCase.eval_context?.meta?.ground_truth || ""}
+            initialContext={currentCase.eval_context}
+            onSave={handleContextSave}
+          />
+        )
+      }
+    </div >
   );
 }
