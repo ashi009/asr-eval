@@ -17,29 +17,55 @@ import (
 )
 
 type ServiceConfig struct {
+	DatasetDir       string
 	GenModel         string
 	EvalModel        string
 	EnabledProviders map[string]bool
 }
 
-type Service struct {
-	DatasetDir string
-	Config     ServiceConfig
-	GenClient  *genai.Client
+// DefaultServiceConfig returns the default configuration for the service.
+func DefaultServiceConfig() ServiceConfig {
+	return ServiceConfig{
+		DatasetDir: "transcripts_and_audios",
+		GenModel:   "gemini-3-pro-preview",
+		EvalModel:  "gemini-3-flash-preview",
+		EnabledProviders: map[string]bool{
+			"volc":         false,
+			"volc_ctx":     false,
+			"volc_ctx_rt":  false,
+			"volc2_ctx":    false,
+			"volc2_ctx_rt": true,
+			"qwen_ctx_rt":  true,
+			"ifly":         true,
+			"ifly_mq":      true,
+			"ifly_en":      false,
+			"iflybatch":    false,
+			"dg":           true,
+			"snx":          true,
+			"snxrt":        true,
+			"snxrt_v4":     true,
+			"ist_basic":    true,
+			"txt":          true,
+		},
+	}
 }
 
-func NewService(dir string, config ServiceConfig, client *genai.Client) *Service {
+type Service struct {
+	Config    ServiceConfig
+	GenClient *genai.Client
+}
+
+func NewService(config ServiceConfig, client *genai.Client) *Service {
 	return &Service{
-		DatasetDir: dir,
-		Config:     config,
-		GenClient:  client,
+		Config:    config,
+		GenClient: client,
 	}
 }
 
 // ListCases scans the directory and returns summary Case objects.
 func (s *Service) ListCases(ctx context.Context) ([]*Case, error) {
 	var results []*Case
-	dir := s.DatasetDir
+	dir := s.Config.DatasetDir
 
 	// We scan for .report.v2.json and .gt.v2.json and .flac
 	// Simplified scanning logic:
@@ -141,7 +167,7 @@ func (s *Service) GetCase(ctx context.Context, id string) (*Case, error) {
 	// Actually, pattern is [id].[provider] (no extension? or .txt?)
 	// Based on `main.go` snippet: `ext != "" && ext != ".json" && ext != ".flac"`
 
-	files, err := os.ReadDir(s.DatasetDir)
+	files, err := os.ReadDir(s.Config.DatasetDir)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +184,7 @@ func (s *Service) GetCase(ctx context.Context, id string) (*Case, error) {
 			continue
 		}
 
-		path := filepath.Join(s.DatasetDir, name)
+		path := filepath.Join(s.Config.DatasetDir, name)
 		content, _ := os.ReadFile(path)
 
 		if strings.HasSuffix(name, ".gt.v2.json") {
@@ -207,14 +233,14 @@ func (s *Service) UpdateContext(ctx context.Context, req UpdateContextRequest) (
 	}
 
 	// Update Context file
-	filename := filepath.Join(s.DatasetDir, req.ID+".gt.v2.json")
+	filename := filepath.Join(s.Config.DatasetDir, req.ID+".gt.v2.json")
 	bytes, _ := json.MarshalIndent(req.EvalContext, "", "  ")
 	if err := os.WriteFile(filename, bytes, 0644); err != nil {
 		return nil, err
 	}
 
 	// Invalidate Report (Side effect)
-	reportPath := filepath.Join(s.DatasetDir, req.ID+".report.v2.json")
+	reportPath := filepath.Join(s.Config.DatasetDir, req.ID+".report.v2.json")
 	_ = os.Remove(reportPath)
 
 	return s.GetCase(ctx, req.ID)
@@ -238,7 +264,7 @@ func (s *Service) GenerateContext(ctx context.Context, req GenerateContextReques
 
 	if req.GroundTruth != "" {
 		// Internal call to save GT
-		filename := filepath.Join(s.DatasetDir, req.ID+".gt.json")
+		filename := filepath.Join(s.Config.DatasetDir, req.ID+".gt.json")
 		data := struct {
 			GroundTruth string `json:"ground_truth"`
 		}{GroundTruth: req.GroundTruth}
@@ -251,7 +277,7 @@ func (s *Service) GenerateContext(ctx context.Context, req GenerateContextReques
 	}
 
 	evaluator := evalv2.NewEvaluator(s.GenClient, s.Config.GenModel, s.Config.EvalModel)
-	audioPath := filepath.Join(s.DatasetDir, req.ID+".flac")
+	audioPath := filepath.Join(s.Config.DatasetDir, req.ID+".flac")
 
 	// Load transcripts from disk
 	c, err := s.GetCase(ctx, req.ID)
@@ -315,7 +341,7 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*evalv2.Ev
 	resp.ContextSnapshot = *req.EvalContext
 
 	// Save Report (Merge with existing)
-	filename := filepath.Join(s.DatasetDir, req.ID+".report.v2.json")
+	filename := filepath.Join(s.Config.DatasetDir, req.ID+".report.v2.json")
 	var finalReport *evalv2.EvalReport
 
 	if existingBytes, err := os.ReadFile(filename); err == nil {

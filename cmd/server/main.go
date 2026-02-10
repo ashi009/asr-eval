@@ -13,35 +13,15 @@ import (
 	"google.golang.org/genai"
 )
 
-var (
-	datasetDir       string
-	genModelFlag     string
-	evalModelFlag    string
-	enabledProviders = map[string]bool{
-		"volc":         false,
-		"volc_ctx":     false,
-		"volc_ctx_rt":  false,
-		"volc2_ctx":    false,
-		"volc2_ctx_rt": true,
-		"qwen_ctx_rt":  true,
-		"ifly":         true,
-		"ifly_mq":      true,
-		"ifly_en":      false,
-		"iflybatch":    false,
-		"dg":           true,
-		"snx":          true,
-		"snxrt":        true,
-		"snxrt_v4":     true,
-		"ist_basic":    true,
-		"txt":          false,
-	}
-)
-
 func main() {
-	var port int
-	flag.StringVar(&datasetDir, "dataset-dir", "transcripts_and_audios", "Directory containing transcripts and audio files")
-	flag.StringVar(&genModelFlag, "gen-model", "gemini-3-pro-preview", "LLM model to use for context generation")
-	flag.StringVar(&evalModelFlag, "eval-model", "gemini-3-flash-preview", "LLM model to use for evaluation")
+	var (
+		cfg  = workspace.DefaultServiceConfig()
+		port = 8080
+	)
+
+	flag.StringVar(&cfg.DatasetDir, "dataset-dir", cfg.DatasetDir, "Directory containing transcripts and audio files")
+	flag.StringVar(&cfg.GenModel, "gen-model", cfg.GenModel, "LLM model to use for context generation")
+	flag.StringVar(&cfg.EvalModel, "eval-model", cfg.EvalModel, "LLM model to use for evaluation")
 	flag.IntVar(&port, "port", 8080, "Port to listen on")
 	flag.Parse()
 
@@ -53,12 +33,7 @@ func main() {
 		log.Fatalf("Failed to init LLM client: %v", err)
 	}
 
-	config := workspace.ServiceConfig{
-		GenModel:         genModelFlag,
-		EvalModel:        evalModelFlag,
-		EnabledProviders: enabledProviders,
-	}
-	svc := workspace.NewService(datasetDir, config, client)
+	svc := workspace.NewService(cfg, client)
 
 	// Use Go 1.22+ ServeMux patterns if available, or just standard.
 	// RegisterRoutes uses pattern matching like "GET /api/cases/{id}" which requires Go 1.22.
@@ -87,11 +62,11 @@ func main() {
 	})
 
 	// Serve audio files
-	audioFs := http.FileServer(http.Dir(datasetDir))
+	audioFs := http.FileServer(http.Dir(cfg.DatasetDir))
 	mux.Handle("/audio/", http.StripPrefix("/audio/", audioFs))
 
 	fmt.Printf("Attempting to listen on 127.0.0.1:%d...\n", port)
-	fmt.Printf("Using dataset directory: %s\n", datasetDir)
+	fmt.Printf("Using dataset directory: %s\n", cfg.DatasetDir)
 	if err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), mux); err != nil {
 		log.Fatalf("Failed to bind to 127.0.0.1:%d: %v\n", port, err)
 	}
