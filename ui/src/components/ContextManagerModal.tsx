@@ -45,13 +45,16 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
       setError(null);
       setView('EDITOR');
     }
+  }, [isOpen, initialGT, initialContext]);
+
+  useEffect(() => {
     return () => {
       // Abort on close or unmount
       if (abortController) {
         abortController.abort();
       }
     };
-  }, [isOpen, initialGT, initialContext, abortController]);
+  }, [abortController]);
 
   if (!isOpen) return null;
 
@@ -87,7 +90,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
         setError(err.message);
       }
     } finally {
-      if (abortController === controller) {
+      if (!controller.signal.aborted) {
         setGenerating(false);
         setAbortController(null);
       }
