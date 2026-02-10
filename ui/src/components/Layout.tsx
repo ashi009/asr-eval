@@ -142,11 +142,6 @@ export function Layout() {
                   <BarChart3 className="w-3.5 h-3.5" />
                 </button>
               </div>
-              {llmModel && (
-                <div className="text-[10px] font-mono text-slate-500 pl-8 opacity-80">
-                  {llmModel}
-                </div>
-              )}
             </div>
             <button onClick={toggleSidebar} className="p-1 hover:bg-slate-100 rounded lg:hidden">
               <span className="sr-only">Close sidebar</span>
@@ -167,21 +162,21 @@ export function Layout() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-6 w-full">
+        <div className="flex-1 overflow-y-auto w-full">
           {pendingCases.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-slate-500 uppercase px-2 mb-2">Pending</h3>
+            <div className="relative px-4 pb-4">
+              <h3 className="sticky top-0 bg-slate-50/80 backdrop-blur-md z-20 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 pt-2 pb-1.5 -mx-4 mb-2">PENDING</h3>
               <ul className="space-y-1">
                 {pendingCases.map(c => (
                   <li key={c.id} className="min-w-0">
                     <NavLink
                       to={`/case/${c.id}`}
                       onClick={handleLinkClick}
-                      className={({ isActive }) => `block w-full text-left px-3 py-2 rounded text-sm font-mono flex justify-between
+                      className={({ isActive }) => `block w-full text-left px-0 py-2 rounded text-sm font-mono flex justify-between
                         ${isActive ? 'bg-white shadow ring-1 ring-slate-200' : 'hover:bg-slate-200/50 text-slate-600'}
                       `}
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1 px-2">
                         <span className="truncate block">{c.id}</span>
                         {isQuestionable(c) && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
                         {processingCases.has(c.id) && <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />}
@@ -193,8 +188,8 @@ export function Layout() {
             </div>
           )}
           {doneCases.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-slate-500 uppercase px-2 mb-2">Done</h3>
+            <div className="relative px-4 pb-4">
+              <h3 className="sticky top-0 bg-slate-50/80 backdrop-blur-md z-20 text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 pt-2 pb-1.5 -mx-4 mb-2">DONE</h3>
               <ul className="space-y-1">
                 {doneCases.map(c => {
                   return (
@@ -202,11 +197,11 @@ export function Layout() {
                       <NavLink
                         to={`/case/${c.id}`}
                         onClick={handleLinkClick}
-                        className={({ isActive }) => `block w-full text-left px-3 py-2 rounded text-sm font-mono flex justify-between items-center group
+                        className={({ isActive }) => `block w-full text-left px-0 py-2 rounded text-sm font-mono flex justify-between items-center group
                           ${isActive ? 'bg-white shadow ring-1 ring-slate-200 border-l-2 border-primary' : 'hover:bg-slate-200/50 text-slate-600 border-l-2 border-transparent'}
                         `}
                       >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 px-2">
                           <span className="truncate block">{c.id}</span>
                           {isQuestionable(c) && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
                           {processingCases.has(c.id) && <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />}
