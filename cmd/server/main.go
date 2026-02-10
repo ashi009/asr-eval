@@ -148,8 +148,9 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 		bestPerformers []string
 		maxScore       int
 		// New fields for stats
-		tokenCount  int
-		evaluations map[string]interface{}
+		tokenCount     int
+		evaluations    map[string]interface{}
+		questionableGT bool
 	}
 	infoMap := make(map[string]*caseInfo)
 
@@ -172,8 +173,9 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 
 			var report evalv2.EvalReport
 			if err := json.Unmarshal(content, &report); err == nil && report.Results != nil {
-				// 1. Get Token Count (with fallback)
+				// 1. Get Token Count and questionable_gt (with fallback)
 				tokenCount := report.ContextSnapshot.Meta.TotalTokenCountEstimate
+				questionableGT := report.ContextSnapshot.Meta.QuestionableGT
 				if tokenCount <= 0 {
 					// Fallback: Try to read from [id].gt.v2.json
 					gtFilename := id + ".gt.v2.json"
@@ -182,6 +184,7 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 						var ctx evalv2.EvalContext
 						if err := json.Unmarshal(gtContent, &ctx); err == nil {
 							tokenCount = ctx.Meta.TotalTokenCountEstimate
+							questionableGT = ctx.Meta.QuestionableGT
 						}
 					}
 				}
@@ -213,6 +216,7 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 
 				infoMap[id].tokenCount = tokenCount
 				infoMap[id].evaluations = evals
+				infoMap[id].questionableGT = questionableGT
 			}
 		}
 	}
@@ -236,12 +240,26 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 		var bestPerformers []string
 		var tokenCount int
 		var evaluations map[string]interface{}
+		var questionableGT bool
 
 		if info, ok := infoMap[basename]; ok {
 			hasEval = info.hasEval
 			bestPerformers = info.bestPerformers
 			tokenCount = info.tokenCount
 			evaluations = info.evaluations
+			questionableGT = info.questionableGT
+		}
+
+		// Also check gt.v2.json for non-evaluated cases
+		if !hasEval {
+			gtFilename := basename + ".gt.v2.json"
+			gtPath := filepath.Join(root, gtFilename)
+			if gtContent, err := ioutil.ReadFile(gtPath); err == nil {
+				var ctx evalv2.EvalContext
+				if err := json.Unmarshal(gtContent, &ctx); err == nil {
+					questionableGT = ctx.Meta.QuestionableGT
+				}
+			}
 		}
 
 		// Construct partial Case object structure
@@ -249,6 +267,10 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 			"id":              basename,
 			"has_ai":          hasEval,
 			"best_performers": bestPerformers,
+		}
+
+		if questionableGT {
+			caseItem["questionable_gt"] = true
 		}
 
 		if hasEval {

@@ -7,6 +7,7 @@ export interface Case {
   transcripts: Record<string, string>;
   has_ai?: boolean;
   best_performers?: string[];
+  questionable_gt?: boolean;
   eval_context?: EvalContext;
   report_v2?: EvalReport;
 }

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { AudioLines, Search, Loader2, BarChart3 } from 'lucide-react';
-import { getASRProviderConfig, isProviderEnabled, setEnabledProviders } from '../config';
+import { AudioLines, Search, Loader2, BarChart3, AlertTriangle } from 'lucide-react';
+import { isProviderEnabled, setEnabledProviders } from '../config';
 import { Case } from '../types';
 
 import { CaseDetail } from './CaseDetail';
-import { RichTooltip } from './RichTooltip';
+
 import { StatsDashboard } from './StatsDashboard';
 
 
@@ -192,6 +192,7 @@ export function Layout() {
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span className="truncate block">{c.id}</span>
+                        {c.questionable_gt && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
                         {processingCases.has(c.id) && <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />}
                       </div>
                     </NavLink>
@@ -216,32 +217,8 @@ export function Layout() {
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="truncate block">{c.id}</span>
+                          {c.questionable_gt && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
                           {processingCases.has(c.id) && <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />}
-                        </div>
-                        <div className="flex items-center -space-x-1 shrink-0 ml-2">
-                          {c.best_performers?.length ? (
-                            c.best_performers.map((p, idx) => {
-                              const config = getASRProviderConfig(p);
-                              return (
-                                <RichTooltip
-                                  key={p}
-                                  trigger={
-                                    <div
-                                      className={`w-6 h-6 flex items-center justify-center rounded-full border-2 border-white ring-1 ring-slate-100 ${config.color.dot} text-white shadow-sm z-[${10 - idx}] relative group/badge`}
-                                    >
-                                      <span className="text-[8px] font-bold uppercase">{config.name.substring(0, 1)}</span>
-                                    </div>
-                                  }
-                                >
-                                  <div className="px-3 py-2 text-xs font-bold text-slate-700">
-                                    {config.name}
-                                  </div>
-                                </RichTooltip>
-                              );
-                            })
-                          ) : (
-                            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">DONE</span>
-                          )}
                         </div>
                       </NavLink>
                     </li>
