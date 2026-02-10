@@ -1,5 +1,5 @@
 import React from 'react';
-import { EvalContext, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../workspace/types';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { EvalContextDisplay } from './EvalContextDisplay';
 

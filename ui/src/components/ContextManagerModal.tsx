@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { EvalContext, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../workspace/types';
+import { useWorkspace } from '../workspace/context';
 import { ContextCreator } from './ContextCreator';
 import { ContextReviewer } from './ContextReviewer';
 import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
@@ -29,11 +30,11 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
   const [gtText, setGtText] = useState(initialGT);
   const [gtAtGeneration, setGtAtGeneration] = useState<string | null>(null);
   const [context, setContext] = useState<EvalContext | undefined>(initialContext);
-  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioPlayerRef = React.useRef<AudioPlayerHandle>(null);
 
-  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -46,49 +47,49 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
     }
     return () => {
       // Abort on close or unmount
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+      if (abortController) {
+        abortController.abort();
       }
     };
-  }, [isOpen, initialGT, initialContext]);
+  }, [isOpen, initialGT, initialContext, abortController]);
 
   if (!isOpen) return null;
+
+  const { generateContext, updateContext } = useWorkspace();
 
   // Handlers for Creator
   const handleGenerate = async () => {
     // Abort previous request if loading
-    if (loading && abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setLoading(false);
+    if (generating && abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setGenerating(false);
       return;
     }
 
-    setLoading(true);
+    setGenerating(true);
     setError(null);
 
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    setAbortController(controller);
 
     try {
-      const res = await fetch('/api/generate-context', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: caseId, ground_truth: gtText }),
-        signal: controller.signal
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data: EvalContext = await res.json();
+      const data = await generateContext({
+        id: caseId,
+        ground_truth: gtText
+      }, controller.signal);
+
       setContext(data);
+      // generateHashes(data); // This function is not defined in the original code. Removing it.
       setGtAtGeneration(gtText);
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         setError(err.message);
       }
     } finally {
-      if (abortControllerRef.current === controller) {
-        setLoading(false);
-        abortControllerRef.current = null;
+      if (abortController === controller) {
+        setGenerating(false);
+        setAbortController(null);
       }
     }
   };
@@ -117,17 +118,13 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
 
   const handleSaveDirectly = async () => {
     if (!context) return;
+    // optimistic update in parent?
     onSave(context, gtText);
     try {
-      await fetch('/api/save-context', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: caseId, context }),
-      });
-      await fetch('/api/save-gt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: caseId, ground_truth: gtText }),
+      // UpdateContext
+      await updateContext({
+        id: caseId,
+        eval_context: { ...context, meta: { ...context.meta, ground_truth: gtText } }
       });
       onClose();
     } catch (err: any) {
@@ -167,7 +164,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
             setGtText={setGtText}
             gtAtGeneration={gtAtGeneration}
             context={context}
-            loading={loading}
+            loading={generating}
             error={error}
             onGenerate={handleGenerate}
             onPrimaryAction={handlePrimaryAction}

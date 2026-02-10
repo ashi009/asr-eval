@@ -1,5 +1,5 @@
 import React from 'react';
-import { EvalContext, Checkpoint } from '../types';
+import { Checkpoint, EvalContext } from '../workspace/types';
 import { smartDiff } from '../diffUtils';
 import { CheckpointList } from './CheckpointList';
 

@@ -2,15 +2,15 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import { AudioLines, Search, Loader2, BarChart3, AlertTriangle } from 'lucide-react';
 import { isProviderEnabled, setEnabledProviders } from '../config';
-import { Case } from '../types';
-
+import { Case } from '../workspace/types';
+import { useWorkspace } from '../workspace/context';
 import { CaseDetail } from './CaseDetail';
 
 import { StatsDashboard } from './StatsDashboard';
 
 
 export function Layout() {
-  const [cases, setCases] = useState<Case[]>([]);
+  const { cases, config, refreshCases } = useWorkspace();
   const [search, setSearch] = useState("");
   const [processingCases, setProcessingCases] = useState<Set<string>>(new Set());
   const [caseSelections, setCaseSelections] = useState<Record<string, Record<string, boolean>>>({});
@@ -63,24 +63,18 @@ export function Layout() {
     });
   };
 
-  const loadCases = async () => {
-    try {
-      const res = await fetch('/api/cases');
-      const data = await res.json();
-      data.sort((a: Case, b: Case) => a.id.localeCompare(b.id));
-      setCases(data);
-    } catch (e) {
-      console.error(e);
-    }
+
+  // Derive status from case data
+  // has_ai if report_v2 is present
+  const hasAI = (c: Case) => !!c.report_v2;
+  const isQuestionable = (c: Case) => {
+    // Check context meta or report context snapshot
+    return c.eval_context?.meta?.questionable_gt || c.report_v2?.context_snapshot?.meta?.questionable_gt;
   };
 
-  useEffect(() => {
-    loadCases();
-  }, []);
-
   const filteredCases = cases.filter(c => c.id.toLowerCase().includes(search.toLowerCase()));
-  const pendingCases = filteredCases.filter(c => !c.has_ai);
-  const doneCases = filteredCases.filter(c => c.has_ai);
+  const pendingCases = filteredCases.filter(c => !hasAI(c));
+  const doneCases = filteredCases.filter(c => hasAI(c));
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isOverlay, setIsOverlay] = useState(false);
@@ -88,16 +82,13 @@ export function Layout() {
   const [statsOpen, setStatsOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/config')
-      .then(res => res.json())
-      .then(data => {
-        setLlmModel(data.llm_model);
-        if (data.enabled_providers) {
-          setEnabledProviders(data.enabled_providers);
-        }
-      })
-      .catch(console.error);
-  }, []);
+    if (config) {
+      setLlmModel(config.gen_model);
+      if (config.enabled_providers) {
+        setEnabledProviders(config.enabled_providers);
+      }
+    }
+  }, [config]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -192,7 +183,7 @@ export function Layout() {
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span className="truncate block">{c.id}</span>
-                        {c.questionable_gt && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
+                        {isQuestionable(c) && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
                         {processingCases.has(c.id) && <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />}
                       </div>
                     </NavLink>
@@ -217,7 +208,7 @@ export function Layout() {
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="truncate block">{c.id}</span>
-                          {c.questionable_gt && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
+                          {isQuestionable(c) && <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />}
                           {processingCases.has(c.id) && <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />}
                         </div>
                       </NavLink>
@@ -250,7 +241,7 @@ export function Layout() {
           } />
           <Route path="/case/:id" element={
             <CaseDetail
-              onEvalComplete={loadCases}
+              onEvalComplete={refreshCases}
               processingCases={processingCases}
               startProcessing={startProcessing}
               endProcessing={endProcessing}

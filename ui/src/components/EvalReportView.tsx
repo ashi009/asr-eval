@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Copy, Check, Minus, AlertTriangle } from 'lucide-react';
 import { getASRProviderConfig } from '../config';
-import { Case } from '../types';
+import { Case } from '../workspace/types';
 import { renderDiff } from './DiffRenderer';
 import { isResultStale } from '../utils/evalUtils';
 import { RichTooltip } from './RichTooltip';
@@ -25,15 +25,15 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
     ...Object.keys(evalResults),
     ...Object.keys(kase.transcripts || {})
   ]));
-  const sortedPerformers = Object.entries(evalResults).sort((a, b) => b[1].metrics.Q_score - a[1].metrics.Q_score);
+  const sortedPerformers = Object.entries(evalResults).sort((a, b) => (b[1]?.metrics?.Q_score ?? 0) - (a[1]?.metrics?.Q_score ?? 0));
 
   const [diffModes, setDiffModes] = useState<Record<string, 'eval' | 'drift' | 'gap'>>({});
   const [sortBy, setSortBy] = useState<'score' | 'name'>('score');
 
   const sortedProviders = [...providers].sort((a, b) => {
     if (sortBy === 'score') {
-      const scoreA = evalResults[a]?.metrics.Q_score ?? -1;
-      const scoreB = evalResults[b]?.metrics.Q_score ?? -1;
+      const scoreA = evalResults[a]?.metrics?.Q_score ?? -1;
+      const scoreB = evalResults[b]?.metrics?.Q_score ?? -1;
       if (scoreB !== scoreA) return scoreB - scoreA;
       return getASRProviderConfig(a).name.localeCompare(getASRProviderConfig(b).name);
     } else {
@@ -75,7 +75,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
               <div className="relative w-full h-full">
                 {/* Score Dots with Tooltips */}
                 {sortedPerformers.map(([p, res]) => {
-                  const score = res.metrics.Q_score;
+                  const score = res?.metrics?.Q_score ?? 0;
                   const config = getASRProviderConfig(p);
                   return (
                     <RichTooltip
@@ -145,7 +145,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
       <div className="flex-1 overflow-y-auto min-h-0 px-8">
         {sortedProviders.map((p) => {
           const aiRes = evalResults[p];
-          const score = aiRes ? aiRes.metrics.Q_score : null;
+          const score = aiRes?.metrics?.Q_score ?? null; // Use null if metrics missing
           const config = getASRProviderConfig(p);
           const { color, name } = config;
           const isSelected = !!selectedProviders?.[p];
@@ -250,7 +250,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
                     <div className={`text-3xl font-bold mt-1 ${scoreColorClass}`}>
                       {score !== null ? score : <span className="text-slate-300 text-lg">—</span>}
                     </div>
-                    {aiRes?.metrics.S_score !== undefined && aiRes?.metrics.P_score !== undefined && (
+                    {aiRes?.metrics?.S_score !== undefined && aiRes?.metrics?.P_score !== undefined && (
                       <div className="text-[10px] text-slate-400 font-medium mt-0.5 font-mono">
                         S{Math.round(aiRes.metrics.S_score * 100)} P{Math.round(aiRes.metrics.P_score * 100)}
                       </div>
@@ -298,7 +298,7 @@ export function EvalReportView({ kase, selectedProviders, onToggleProvider, onSe
                   className="absolute top-0 right-2 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-all opacity-0 group-hover:opacity-100"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigator.clipboard.writeText(kase.transcripts[p] || "");
+                    navigator.clipboard.writeText(kase.transcripts?.[p] || "");
                   }}
                   title="Copy original transcript"
                 >

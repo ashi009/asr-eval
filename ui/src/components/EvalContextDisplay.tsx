@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { EvalContext, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../workspace/types';
 import { Copy } from 'lucide-react';
 import { smartDiff } from '../diffUtils';
 import { CheckpointList } from './CheckpointList';

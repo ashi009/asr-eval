@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
-import { Case } from '../types';
+import { Case } from '../workspace/types';
 import { getASRProviderConfig, isProviderEnabled } from '../config';
 import { X } from 'lucide-react';
 

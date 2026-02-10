@@ -1,5 +1,5 @@
 import React from 'react';
-import { Checkpoint } from '../types';
+import { Checkpoint } from '../workspace/types';
 import { RichTooltip } from './RichTooltip';
 
 // --- CheckpointItem ---
