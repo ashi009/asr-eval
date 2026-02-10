@@ -47,8 +47,15 @@ export function Layout() {
 
   const getSelection = (id: string) => caseSelections[id];
 
-  const setSelectionForCase = (id: string, newVal: Record<string, boolean>) => {
-    setCaseSelections(prev => ({ ...prev, [id]: newVal }));
+  const setSelectionForCase = (id: string, newVal: Record<string, boolean> | undefined) => {
+    setCaseSelections(prev => {
+      if (newVal === undefined) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: newVal };
+    });
   };
 
   const startProcessing = (id: string) => {

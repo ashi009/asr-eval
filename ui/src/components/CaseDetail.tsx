@@ -15,7 +15,7 @@ interface CaseDetailProps {
   startProcessing: (id: string) => void;
   endProcessing: (id: string) => void;
   getSelection: (id: string) => Record<string, boolean>;
-  setSelectionForCase: (id: string, val: Record<string, boolean>) => void;
+  setSelectionForCase: (id: string, val: Record<string, boolean> | undefined) => void;
   initSelection: (data: Case) => Record<string, boolean>;
 }
 
@@ -73,6 +73,9 @@ export function CaseDetail({
         eval_context: currentCase.eval_context!,
         provider_ids: providersToEval
       });
+      // Clear selection so it re-inits with new report data
+      setSelectionForCase(id, undefined);
+
       if (idRef.current === id) await refresh();
       if (onEvalComplete) onEvalComplete();
     } catch (e: any) {
@@ -83,6 +86,7 @@ export function CaseDetail({
   };
 
   const handleContextSave = () => {
+    if (id) setSelectionForCase(id, undefined);
     refresh();
   };
 

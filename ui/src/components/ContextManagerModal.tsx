@@ -121,14 +121,14 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
 
   const handleSaveDirectly = async () => {
     if (!context) return;
-    // optimistic update in parent?
-    onSave(context, gtText);
     try {
       // UpdateContext
       await updateContext({
         id: caseId,
         eval_context: { ...context, meta: { ...context.meta, ground_truth: gtText } }
       });
+      // OPTIMISTIC UPDATE: only call parent onSave after success to avoid race condition
+      onSave(context, gtText);
       onClose();
     } catch (err: any) {
       setError("Failed to save: " + err.message);

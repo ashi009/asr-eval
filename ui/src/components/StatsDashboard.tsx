@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
 import { Case } from '../workspace/types';
 import { getASRProviderConfig, isProviderEnabled } from '../config';
+import { computeWeightedKDE } from '../utils/statistics';
 import { X } from 'lucide-react';
 
 
@@ -160,31 +161,23 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
       .attr("stroke", "#e2e8f0")
       .attr("stroke-dasharray", "2,3");
 
-    // Exact density using binning (step 5) to smooth out spikes
+
+    // Use Weighted Gaussian KDE for smoother distribution
+    // We want to visualize the distribution of Q-scores weighted by token count.
     const densityData = stats.map(s => {
-      // Initialize bins at 0, 5, 10... 100
-      const binStep = 4;
-      const bins = new Map<number, number>();
-      for (let i = 0; i <= 100; i += binStep) {
-        bins.set(i, 0);
-      }
+      // Prepare data for KDE: { value: score, weight: tokens }
+      const data = s.scoreData.map(d => ({ value: d.score, weight: d.tokens }));
 
-      s.scoreData.forEach(d => {
-        // Snap to nearest 5
-        const scoreIndex = Math.round(d.score / binStep) * binStep;
-        if (bins.has(scoreIndex)) {
-          bins.set(scoreIndex, bins.get(scoreIndex)! + d.tokens);
-        }
-      });
+      // Compute KDE
+      // Domain 0-100, 101 ticks (integer steps)
+      // Bandwidth of 1.5 - 2.0 provides a good balance between smoothing and detail for Q-scores.
+      // Silverman's rule can over-smooth multimodal distributions often seen in ASR (peaks at 0 and 100).
+      const density = computeWeightedKDE(data, [0, 100], 101, 2);
 
-      // Map to [x, y] coordinates
-      const density = Array.from(bins.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([x, y]) => [x, y] as [number, number]);
-
-      const maxDensity = d3.max(density, d => d[1]) || 0;
+      const maxDensity = d3.max(density, (d: [number, number]) => d[1]) || 0;
       return { ...s, density, maxDensity };
     });
+
 
     // Global max weighted density for proportional scaling
     const globalMaxDensity = d3.max(densityData, d => d.maxDensity) || 1;
