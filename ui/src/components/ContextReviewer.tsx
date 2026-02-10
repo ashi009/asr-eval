@@ -1,11 +1,11 @@
 import React from 'react';
-import { ContextResponse, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../types';
 import { smartDiff } from '../diffUtils';
 import { CheckpointList } from './CheckpointList';
 
 interface ContextReviewerProps {
-  oldContext: ContextResponse;
-  newContext: ContextResponse;
+  oldContext: EvalContext;
+  newContext: EvalContext;
   oldGT: string;
   newGT: string;
   onBack: () => void;

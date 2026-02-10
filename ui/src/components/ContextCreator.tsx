@@ -1,5 +1,5 @@
 import React from 'react';
-import { ContextResponse, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../types';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { EvalContextDisplay } from './EvalContextDisplay';
 
@@ -7,12 +7,12 @@ interface ContextCreatorProps {
   gtText: string;
   setGtText: (text: string) => void;
   gtAtGeneration: string | null;
-  context?: ContextResponse;
+  context?: EvalContext;
   loading: boolean;
   error: string | null;
   onGenerate: () => void;
   onPrimaryAction: () => void;
-  initialContext?: ContextResponse;
+  initialContext?: EvalContext;
   onCancel: () => void;
   disablePrimary?: boolean;
   onCheckpointClick?: (checkpoint: Checkpoint) => void;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { AlertTriangle, Settings, Copy, Play } from 'lucide-react';
-import { Case, LoadingData, ContextResponse } from '../types';
+import { Case, LoadingData, EvalContext } from '../types';
 import { EvalReportView } from './EvalReportView';
 import { ContextManagerModal } from './ContextManagerModal';
 import { RichTooltip } from './RichTooltip';
@@ -119,7 +119,7 @@ export function CaseDetail({ onEvalComplete, processingCases, startProcessing, e
     }
   };
 
-  const handleContextSave = (ctx: ContextResponse, gt: string) => {
+  const handleContextSave = (ctx: EvalContext, gt: string) => {
     updateCaseLocal({
       eval_context: ctx,
       ground_truth: gt,

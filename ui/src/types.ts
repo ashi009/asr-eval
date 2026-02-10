@@ -7,8 +7,8 @@ export interface Case {
   transcripts: Record<string, string>;
   has_ai?: boolean;
   best_performers?: string[];
-  eval_context?: ContextResponse;
-  report_v2?: EvaluationResponse;
+  eval_context?: EvalContext;
+  report_v2?: EvalReport;
 }
 
 export interface LoadingData {
@@ -20,8 +20,8 @@ export interface LoadingData {
   has_ai?: boolean;
   ground_truth?: string;
   evaluated_ground_truth?: string;
-  eval_context?: ContextResponse;
-  report_v2?: EvaluationResponse;
+  eval_context?: EvalContext;
+  report_v2?: EvalReport;
 }
 
 // v2 Types
@@ -34,7 +34,7 @@ export interface Checkpoint {
   rationale: string;
 }
 
-export interface MetaInfo {
+export interface ContextMeta {
   business_goal: string;
   audio_reality_inference: string;
   total_token_count_estimate: number;
@@ -43,8 +43,8 @@ export interface MetaInfo {
   questionable_reason?: string;
 }
 
-export interface ContextResponse {
-  meta: MetaInfo;
+export interface EvalContext {
+  meta: ContextMeta;
   checkpoints: Checkpoint[];
 }
 
@@ -54,29 +54,29 @@ export interface CheckpointResult {
   reason?: string;
 }
 
-export interface PERDetails {
+export interface PhoneticDetails {
   sub: number;
   del: number;
   ins: number;
 }
 
-export interface Metrics {
+export interface EvalMetrics {
   S_score: number;
   P_score: number;
   Q_score: number; // Pre-computed composite score from backend
-  PER_details: PERDetails;
+  PER_details: PhoneticDetails;
 }
 
-export interface ModelEvaluation {
+export interface EvalResult {
   transcript: string;
   revised_transcript: string;
-  metrics: Metrics;
+  metrics: EvalMetrics;
   checkpoint_results: Record<string, CheckpointResult>;
   summary: string[];
 }
 
-export interface EvaluationResponse {
-  evaluations: Record<string, ModelEvaluation>;
-  context_snapshot?: ContextResponse;
+export interface EvalReport {
+  evaluations: Record<string, EvalResult>;
+  context_snapshot?: EvalContext;
   context_hash?: string;
 }

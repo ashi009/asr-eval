@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { ContextResponse, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../types';
 import { Copy } from 'lucide-react';
 import { smartDiff } from '../diffUtils';
 import { CheckpointList } from './CheckpointList';
 
 interface EvalContextDisplayProps {
-  context: ContextResponse;
+  context: EvalContext;
   enableAudioRealityToggle?: boolean;
   showWeightInBadge?: boolean;
   onCheckpointClick?: (checkpoint: Checkpoint) => void;

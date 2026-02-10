@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ContextResponse, Checkpoint } from '../types';
+import { EvalContext, Checkpoint } from '../types';
 import { ContextCreator } from './ContextCreator';
 import { ContextReviewer } from './ContextReviewer';
 import { AudioPlayer, AudioPlayerHandle } from './AudioPlayer';
@@ -10,8 +10,8 @@ interface ContextManagerModalProps {
   onClose: () => void;
   caseId: string;
   initialGT: string;
-  initialContext?: ContextResponse;
-  onSave: (context: ContextResponse, gt: string) => void;
+  initialContext?: EvalContext;
+  onSave: (context: EvalContext, gt: string) => void;
 }
 
 type ViewMode = 'EDITOR' | 'COMPARISON';
@@ -28,7 +28,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
   // Lifted state
   const [gtText, setGtText] = useState(initialGT);
   const [gtAtGeneration, setGtAtGeneration] = useState<string | null>(null);
-  const [context, setContext] = useState<ContextResponse | undefined>(initialContext);
+  const [context, setContext] = useState<EvalContext | undefined>(initialContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioPlayerRef = React.useRef<AudioPlayerHandle>(null);
@@ -78,7 +78,7 @@ export const ContextManagerModal: React.FC<ContextManagerModalProps> = ({
         signal: controller.signal
       });
       if (!res.ok) throw new Error(await res.text());
-      const data: ContextResponse = await res.json();
+      const data: EvalContext = await res.json();
       setContext(data);
       setGtAtGeneration(gtText);
     } catch (err: any) {
