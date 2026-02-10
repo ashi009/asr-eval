@@ -65,7 +65,7 @@ export interface EvalResult {
 }
 
 export interface EvalReport {
-  evaluations: Record<string, EvalResult>;
+  evaluations: Record<string, EvalResult | Partial<EvalResult>>;
   context_snapshot?: EvalContext;
   context_hash?: string;
 }
