@@ -1,8 +1,7 @@
 interface ColorConfig {
   dot: string;
-  ring: string;
+  fill: string;
   text: string;
-  border: string;
 }
 
 export interface ASRProviderConfigItem {
@@ -15,80 +14,84 @@ export const ASR_PROVIDER_CONFIG: Record<string, ASRProviderConfigItem> = {
   // Volcengine
   'volc': {
     name: 'Volcengine',
-    color: { dot: 'bg-cyan-500', ring: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-200' }
+    color: { dot: 'bg-cyan-500', fill: 'fill-cyan-500', text: 'text-cyan-700' }
   },
   'volc_ctx': {
     name: 'Volcengine Context',
-    color: { dot: 'bg-cyan-600', ring: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-300' }
+    color: { dot: 'bg-cyan-500', fill: 'fill-cyan-500', text: 'text-cyan-700' }
   },
   'volc_ctx_rt': {
     name: 'Volcengine Realtime',
-    color: { dot: 'bg-cyan-600', ring: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-300' }
+    color: { dot: 'bg-cyan-500', fill: 'fill-cyan-500', text: 'text-cyan-700' }
   },
   'volc2_ctx': {
     name: 'Volcengine2 with Context',
-    color: { dot: 'bg-cyan-700', ring: 'bg-cyan-100', text: 'text-cyan-900', border: 'border-cyan-400' }
+    color: { dot: 'bg-cyan-600', fill: 'fill-cyan-600', text: 'text-cyan-800' }
   },
   'volc2_ctx_rt': {
     name: 'Volcengine2 with Context Realtime',
-    color: { dot: 'bg-cyan-700', ring: 'bg-cyan-100', text: 'text-cyan-900', border: 'border-cyan-400' }
+    color: { dot: 'bg-cyan-600', fill: 'fill-cyan-600', text: 'text-cyan-800' }
   },
 
   // Qwen
   'qwen_ctx_rt': {
     name: 'Qwen with Context Realtime',
-    color: { dot: 'bg-red-500', ring: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' }
+    color: { dot: 'bg-red-600', fill: 'fill-red-600', text: 'text-red-800' }
   },
 
   // iFlyTek
   'ifly': {
     name: 'iFlyTek',
-    color: { dot: 'bg-orange-500', ring: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' }
+    color: { dot: 'bg-orange-500', fill: 'fill-orange-500', text: 'text-orange-700' }
   },
   'ifly_mq': {
     name: 'iFlyTek MQ',
-    color: { dot: 'bg-orange-500', ring: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' }
+    color: { dot: 'bg-orange-500', fill: 'fill-orange-500', text: 'text-orange-700' }
   },
   'ifly_en': {
     name: 'iFlyTek English',
-    color: { dot: 'bg-orange-500', ring: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' }
+    color: { dot: 'bg-orange-500', fill: 'fill-orange-500', text: 'text-orange-700' }
   },
   'iflybatch': {
     name: 'iFlyTek Batch',
-    color: { dot: 'bg-orange-600', ring: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300' }
+    color: { dot: 'bg-orange-600', fill: 'fill-orange-600', text: 'text-orange-800' }
   },
 
   // Deepgram
   'dg': {
     name: 'Deepgram',
-    color: { dot: 'bg-emerald-500', ring: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' }
+    color: { dot: 'bg-emerald-500', fill: 'fill-emerald-500', text: 'text-emerald-700' }
   },
 
   // Sonix
   'snx': {
     name: 'Sonix',
-    color: { dot: 'bg-indigo-500', ring: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' }
+    color: { dot: 'bg-indigo-500', fill: 'fill-indigo-500', text: 'text-indigo-700' }
   },
   'snxrt': {
     name: 'Sonix Realtime',
-    color: { dot: 'bg-indigo-600', ring: 'bg-indigo-100', text: 'text-indigo-800', border: 'border-indigo-300' }
+    color: { dot: 'bg-indigo-600', fill: 'fill-indigo-600', text: 'text-indigo-800' }
+  },
+  'snxrt_v4': {
+    name: 'Sonix Realtime V4',
+    color: { dot: 'bg-indigo-600', fill: 'fill-indigo-600', text: 'text-indigo-800' }
   },
 
   // IST
   'ist_basic': {
     name: 'IST Basic',
-    color: { dot: 'bg-yellow-500', ring: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200' }
+    color: { dot: 'bg-yellow-500', fill: 'fill-yellow-500', text: 'text-yellow-700' }
   },
 
   'txt': {
     name: 'Human Transcription',
-    color: { dot: 'bg-gray-500', ring: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200' }
+    color: { dot: 'bg-gray-500', fill: 'fill-gray-500', text: 'text-gray-700' }
   },
 
   // Fallback
   'default': {
     name: 'Unknown Provider',
-    color: { dot: 'bg-slate-500', ring: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' }
+    color: { dot: 'bg-slate-500', fill: 'fill-slate-500', text: 'text-slate-700' }
   }
 };
 
@@ -107,7 +110,7 @@ export const isProviderEnabled = (id: string): boolean => {
   if (ENABLED_PROVIDERS[key] !== undefined) {
     return ENABLED_PROVIDERS[key];
   }
-  return true; // Default to enabled if not specified (e.g. for unknown providers)
+  return false; // Default to disabled if not in the enabled list
 };
 
 export const getASRProviderConfig = (id: string): ASRProviderConfigItem => {
