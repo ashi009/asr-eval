@@ -43,9 +43,10 @@ var (
 		"ifly_mq":      true,
 		"ifly_en":      false,
 		"iflybatch":    false,
-		"dg":           false,
-		"snx":          false,
+		"dg":           true,
+		"snx":          true,
 		"snxrt":        true,
+		"snxrt_v4":     true,
 		"ist_basic":    true,
 		"txt":          false,
 	}
@@ -146,6 +147,9 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 		hasEval        bool
 		bestPerformers []string
 		maxScore       int
+		// New fields for stats
+		tokenCount  int
+		evaluations map[string]interface{}
 	}
 	infoMap := make(map[string]*caseInfo)
 
@@ -160,21 +164,45 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 				infoMap[id] = &caseInfo{hasEval: true, maxScore: -1}
 			}
 
-			// Read scores to find winners
+			// Read scores to find winners and collect stats
 			content, err := ioutil.ReadFile(filepath.Join(root, name))
 			if err != nil {
 				continue
 			}
 
 			var report evalv2.EvalReport
-			// We only care about the specific model result in that file
 			if err := json.Unmarshal(content, &report); err == nil && report.Results != nil {
+				// 1. Get Token Count (with fallback)
+				tokenCount := report.ContextSnapshot.Meta.TotalTokenCountEstimate
+				if tokenCount <= 0 {
+					// Fallback: Try to read from [id].gt.v2.json
+					gtFilename := id + ".gt.v2.json"
+					gtPath := filepath.Join(root, gtFilename)
+					if gtContent, err := ioutil.ReadFile(gtPath); err == nil {
+						var ctx evalv2.EvalContext
+						if err := json.Unmarshal(gtContent, &ctx); err == nil {
+							tokenCount = ctx.Meta.TotalTokenCountEstimate
+						}
+					}
+				}
+
+				// 2. Prepare evaluations map (subset)
+				evals := make(map[string]interface{})
+
 				for provider, res := range report.Results {
+					// Always compute QScore dynamically
+					res.Metrics.QScore = res.Metrics.CompositeScore()
+
+					// Store for stats (ONLY Metrics)
+					evals[provider] = map[string]interface{}{
+						"metrics": res.Metrics,
+					}
+
 					// Only consider enabled providers for best performers
 					if enabled, ok := enabledProviders[provider]; !ok || !enabled {
 						continue
 					}
-					score := res.Metrics.CompositeScore()
+					score := res.Metrics.QScore
 					if score > infoMap[id].maxScore {
 						infoMap[id].maxScore = score
 						infoMap[id].bestPerformers = []string{provider}
@@ -182,6 +210,9 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 						infoMap[id].bestPerformers = append(infoMap[id].bestPerformers, provider)
 					}
 				}
+
+				infoMap[id].tokenCount = tokenCount
+				infoMap[id].evaluations = evals
 			}
 		}
 	}
@@ -203,16 +234,37 @@ func scanFiles(root string) ([]map[string]interface{}, error) {
 
 		hasEval := false
 		var bestPerformers []string
+		var tokenCount int
+		var evaluations map[string]interface{}
+
 		if info, ok := infoMap[basename]; ok {
 			hasEval = info.hasEval
 			bestPerformers = info.bestPerformers
+			tokenCount = info.tokenCount
+			evaluations = info.evaluations
 		}
 
-		results = append(results, map[string]interface{}{
+		// Construct partial Case object structure
+		caseItem := map[string]interface{}{
 			"id":              basename,
 			"has_ai":          hasEval,
 			"best_performers": bestPerformers,
-		})
+		}
+
+		if hasEval {
+			// Inject report_v2 with context_snapshot and evaluations
+			reportV2 := map[string]interface{}{
+				"context_snapshot": map[string]interface{}{
+					"meta": map[string]interface{}{
+						"total_token_count_estimate": tokenCount,
+					},
+				},
+				"evaluations": evaluations,
+			}
+			caseItem["report_v2"] = reportV2
+		}
+
+		results = append(results, caseItem)
 
 		return nil
 	})
