@@ -5,12 +5,13 @@ import { getASRProviderConfig, isProviderEnabled } from '../config';
 import { computeWeightedKDE } from '../utils/statistics';
 import { X } from 'lucide-react';
 
-
 interface StatsDashboardProps {
   cases: Case[];
   isOpen: boolean;
   onClose: () => void;
 }
+
+type MetricType = 'Q' | 'S' | 'P';
 
 interface ProviderStats {
   provider: string;
@@ -23,14 +24,18 @@ interface ProviderStats {
   weightedP: number;
   totalTokens: number;
   caseCount: number;
-  qScores: number[];
-  scoreData: { score: number; tokens: number }[];
+  // Raw data for distributions
+  qData: { score: number; tokens: number }[];
+  sData: { score: number; tokens: number }[];
+  pData: { score: number; tokens: number }[];
 }
+
 
 export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) {
   const d3Container = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [activeMetric, setActiveMetric] = useState<MetricType>('Q');
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -68,8 +73,9 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
             weightedP: 0,
             totalTokens: 0,
             caseCount: 0,
-            qScores: [],
-            scoreData: [],
+            qData: [],
+            sData: [],
+            pData: [],
           });
         }
 
@@ -81,8 +87,11 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
           s.weightedS += metrics.S_score * 100 * tokenCount;
           s.weightedP += metrics.P_score * 100 * tokenCount;
         }
-        s.qScores.push(metrics.Q_score);
-        s.scoreData.push({ score: metrics.Q_score, tokens: tokenCount });
+
+        // Push raw scores (S and P normalized to 0-100 for consistent distribution visualization)
+        s.qData.push({ score: metrics.Q_score, tokens: tokenCount });
+        s.sData.push({ score: metrics.S_score * 100, tokens: tokenCount });
+        s.pData.push({ score: metrics.P_score * 100, tokens: tokenCount });
       });
     });
 
@@ -95,8 +104,13 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
       return s;
     });
 
-    return result.sort((a, b) => b.weightedQ - a.weightedQ);
-  }, [cases]);
+    // Sort by the active metric
+    return result.sort((a, b) => {
+      if (activeMetric === 'Q') return b.weightedQ - a.weightedQ;
+      if (activeMetric === 'S') return b.weightedS - a.weightedS;
+      return b.weightedP - a.weightedP;
+    });
+  }, [cases, activeMetric]);
 
   useEffect(() => {
     if (!d3Container.current || stats.length === 0 || !isOpen) return;
@@ -108,7 +122,6 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
     d3.select(".stats-tooltip").remove();
 
     // Create tooltip div
-    // Create tooltip div matched to RichTooltip style
     const tooltip = d3.select("body").append("div")
       .attr("class", "stats-tooltip fixed z-[100] bg-white shadow-2xl rounded-xl border border-slate-200 p-3 text-[11px] pointer-events-none opacity-0 transition-opacity duration-200")
       .style("max-width", "220px");
@@ -129,7 +142,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    // X Axis: Q Score 0-100
+    // X Axis: Score 0-100
     const x = d3.scaleLinear().domain([0, 100]).range([0, innerWidth]);
 
     g.append("g")
@@ -138,15 +151,11 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
       .selectAll("text")
       .attr("class", "text-xs fill-slate-500");
 
-
-
     // Y Axis: Providers
     const y = d3.scaleBand()
       .domain(stats.map(d => d.provider))
       .range([0, innerHeight])
       .padding(0.15);
-
-
 
     // Grid lines
     g.append("g")
@@ -161,23 +170,22 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
       .attr("stroke", "#e2e8f0")
       .attr("stroke-dasharray", "2,3");
 
-
-    // Use Weighted Gaussian KDE for smoother distribution
-    // We want to visualize the distribution of Q-scores weighted by token count.
+    // Calculate density data based on active metric
     const densityData = stats.map(s => {
+      // Select appropriate data based on activeMetric
+      let rawData;
+      if (activeMetric === 'S') rawData = s.sData;
+      else if (activeMetric === 'P') rawData = s.pData;
+      else rawData = s.qData;
+
       // Prepare data for KDE: { value: score, weight: tokens }
-      const data = s.scoreData.map(d => ({ value: d.score, weight: d.tokens }));
+      const data = rawData.map(d => ({ value: d.score, weight: d.tokens }));
 
       // Compute KDE
-      // Domain 0-100, 101 ticks (integer steps)
-      // Bandwidth of 1.5 - 2.0 provides a good balance between smoothing and detail for Q-scores.
-      // Silverman's rule can over-smooth multimodal distributions often seen in ASR (peaks at 0 and 100).
       const density = computeWeightedKDE(data, [0, 100], 101, 2);
-
       const maxDensity = d3.max(density, (d: [number, number]) => d[1]) || 0;
       return { ...s, density, maxDensity };
     });
-
 
     // Global max weighted density for proportional scaling
     const globalMaxDensity = d3.max(densityData, d => d.maxDensity) || 1;
@@ -185,26 +193,26 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
     // Draw each provider row
     densityData.forEach(d => {
       const bandWidth = y.bandwidth();
-      const maxViolinHeight = bandWidth * 0.95; // Use almost full height
+      const maxViolinHeight = bandWidth * 0.95;
       const yNum = d3.scaleLinear().domain([0, globalMaxDensity]).range([0, maxViolinHeight]);
-      // Baseline aligned with the middle of the band (where text is)
+      // Baseline aligned with the middle of the band
       const baselineY = (y(d.provider) || 0) + bandWidth / 2;
 
       // Group for this provider's elements
       const providerGroup = g.append("g").attr("class", `provider-${d.provider}`);
 
-      // Draw top-half violin (ridgeline: baseline at center, density grows upward)
+      // Draw top-half violin
       const area = d3.area<[number, number]>()
         .x(pt => x(pt[0]))
         .y0(() => baselineY)
         .y1(pt => baselineY - yNum(pt[1]))
-        .curve(d3.curveMonotoneX); // Use monotone spline for smooth but accurate connections
+        .curve(d3.curveMonotoneX);
 
       const violinPath = providerGroup.append("path")
         .datum(d.density)
         .attr("d", area)
         .attr("class", d.fillClass)
-        .attr("fill-opacity", 0.3); // No stroke
+        .attr("fill-opacity", 0.3);
 
       // Dotted baseline guide
       providerGroup.append("line")
@@ -216,16 +224,20 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .attr("stroke-dasharray", "4,4")
         .attr("stroke-width", 1);
 
-      // Center Dot (Weighted Q) - using styled foreignObject
+      // Center Dot (Weighted Score for Active Metric)
+      let activeWeightedScore = d.weightedQ;
+      if (activeMetric === 'S') activeWeightedScore = d.weightedS;
+      if (activeMetric === 'P') activeWeightedScore = d.weightedP;
+
       providerGroup.append("foreignObject")
-        .attr("x", x(d.weightedQ) - 6)
+        .attr("x", x(activeWeightedScore) - 6)
         .attr("y", baselineY - 6)
         .attr("width", 12)
         .attr("height", 12)
         .append("xhtml:div")
         .attr("class", `w-3 h-3 rounded-full ${d.dotClass} border-2 border-white shadow-sm`);
 
-      // Invisible hover rect covering the whole row
+      // Invisible hover rect
       providerGroup.append("rect")
         .attr("x", 0)
         .attr("y", y(d.provider) || 0)
@@ -234,15 +246,13 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .attr("fill", "transparent")
         .attr("cursor", "pointer")
         .on("mouseenter", function (event: MouseEvent) {
-          // Highlight
           violinPath.attr("fill-opacity", 0.55).attr("stroke-width", 2.5);
-          // Show tooltip
           tooltip.style("opacity", 1).html(
             `<div style="font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span class="w-2.5 h-2.5 rounded-full ${d.dotClass} inline-block"></span>${d.displayName}</div>` +
             `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;color:#475569">` +
-            `<span style="color:#94a3b8">W-Q</span><span style="font-weight:600;text-align:right">${d.weightedQ.toFixed(1)}</span>` +
-            `<span style="color:#94a3b8">W-S</span><span style="text-align:right">${d.weightedS.toFixed(1)}</span>` +
-            `<span style="color:#94a3b8">W-P</span><span style="text-align:right">${d.weightedP.toFixed(1)}</span>` +
+            `<span style="color:#94a3b8;font-weight:${activeMetric === 'Q' ? '700' : '400'}">W-Q</span><span style="text-align:right;font-weight:${activeMetric === 'Q' ? '700' : '400'}">${d.weightedQ.toFixed(1)}</span>` +
+            `<span style="color:#94a3b8;font-weight:${activeMetric === 'S' ? '700' : '400'}">W-S</span><span style="text-align:right;font-weight:${activeMetric === 'S' ? '700' : '400'}">${d.weightedS.toFixed(1)}</span>` +
+            `<span style="color:#94a3b8;font-weight:${activeMetric === 'P' ? '700' : '400'}">W-P</span><span style="text-align:right;font-weight:${activeMetric === 'P' ? '700' : '400'}">${d.weightedP.toFixed(1)}</span>` +
             `<span style="color:#94a3b8">Cases</span><span style="text-align:right">${d.caseCount}</span>` +
             `<span style="color:#94a3b8">Tokens</span><span style="text-align:right">${d.totalTokens.toLocaleString()}</span>` +
             `</div>`
@@ -262,7 +272,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         });
     });
 
-    // Draw Provider Labels LAST so they are on top of everything (using foreignObject for wrapping)
+    // Draw Provider Labels
     const labelGroup = g.append("g");
     stats.forEach(d => {
       const bandCenter = (y(d.provider) || 0) + y.bandwidth() / 2;
@@ -290,9 +300,8 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .text(d.displayName);
     });
 
-    // Cleanup tooltip on unmount
     return () => { tooltip.remove(); };
-  }, [stats, isOpen, containerWidth]);
+  }, [stats, isOpen, containerWidth, activeMetric]);
 
   if (!isOpen) return null;
 
@@ -311,9 +320,70 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto flex flex-col">
           <div className="px-6 py-4" ref={containerRef}>
             <svg ref={d3Container} className="w-full" />
+          </div>
+
+          <div className="px-6 pb-6 pt-2 flex flex-col gap-6">
+            {/* Controls */}
+            <div className="flex justify-center">
+              <div className="inline-flex bg-slate-100 p-1 rounded-lg">
+                {(['Q', 'S', 'P'] as MetricType[]).map(metric => (
+                  <button
+                    key={metric}
+                    onClick={() => setActiveMetric(metric)}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeMetric === metric
+                        ? 'bg-white text-slate-800 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    W-{metric} Score
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3">Provider</th>
+                    <th className={`px-4 py-3 text-right ${activeMetric === 'Q' ? 'text-indigo-600 font-bold' : ''}`}>W-Q Score</th>
+                    <th className={`px-4 py-3 text-right ${activeMetric === 'S' ? 'text-indigo-600 font-bold' : ''}`}>W-S Score</th>
+                    <th className={`px-4 py-3 text-right ${activeMetric === 'P' ? 'text-indigo-600 font-bold' : ''}`}>W-P Score</th>
+                    <th className="px-4 py-3 text-right">Cases</th>
+                    <th className="px-4 py-3 text-right">Tokens</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stats.map(s => (
+                    <tr key={s.provider} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-slate-700 flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${s.dotClass}`}></span>
+                        {s.displayName}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'Q' ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                        {s.weightedQ.toFixed(1)}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'S' ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                        {s.weightedS.toFixed(1)}
+                      </td>
+                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'P' ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                        {s.weightedP.toFixed(1)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-500">
+                        {s.caseCount}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-500">
+                        {s.totalTokens.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
