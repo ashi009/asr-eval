@@ -16,6 +16,13 @@ import (
 	"google.golang.org/genai"
 )
 
+const (
+	extFlac     = ".flac"
+	extReportV2 = ".report.v2.json"
+	extGTV2     = ".gt.v2.json"
+	extJSON     = ".json"
+)
+
 type ServiceConfig struct {
 	DatasetDir       string
 	GenModel         string
@@ -67,11 +74,6 @@ func (s *Service) ListCases(ctx context.Context) ([]*Case, error) {
 	var results []*Case
 	dir := s.Config.DatasetDir
 
-	// We scan for .report.v2.json and .gt.v2.json and .flac
-	// Simplified scanning logic:
-	// 1. Identify all unique case IDs (basename of .flac files)
-	// 2. For each ID, check if ReportV2 or GT exists and populate a lightweight Case object.
-
 	// Optimization: Read all directory entries once
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -84,62 +86,51 @@ func (s *Service) ListCases(ctx context.Context) ([]*Case, error) {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".flac") {
-			id := strings.TrimSuffix(name, ".flac")
+		if strings.HasSuffix(name, extFlac) {
+			id := strings.TrimSuffix(name, extFlac)
 			if filesMap[id] == nil {
 				filesMap[id] = make(map[string]bool)
 			}
-			filesMap[id][".flac"] = true
-		} else if strings.HasSuffix(name, ".report.v2.json") {
-			id := strings.TrimSuffix(name, ".report.v2.json")
+			filesMap[id][extFlac] = true
+		} else if strings.HasSuffix(name, extReportV2) {
+			id := strings.TrimSuffix(name, extReportV2)
 			if filesMap[id] == nil {
 				filesMap[id] = make(map[string]bool)
 			}
-			filesMap[id][".report.v2.json"] = true
-		} else if strings.HasSuffix(name, ".gt.v2.json") {
-			id := strings.TrimSuffix(name, ".gt.v2.json")
+			filesMap[id][extReportV2] = true
+		} else if strings.HasSuffix(name, extGTV2) {
+			id := strings.TrimSuffix(name, extGTV2)
 			if filesMap[id] == nil {
 				filesMap[id] = make(map[string]bool)
 			}
-			filesMap[id][".gt.v2.json"] = true
+			filesMap[id][extGTV2] = true
 		}
 	}
 
 	for id, exts := range filesMap {
-		if !exts[".flac"] {
+		if !exts[extFlac] {
 			// Skip if no audio file (sanity check)
 			continue
 		}
 
 		c := &Case{ID: id}
 
-		// Try to load ReportV2 first (most comprehensive)
-		if exts[".report.v2.json"] {
-			content, err := os.ReadFile(filepath.Join(dir, id+".report.v2.json"))
+		// Try to load GT first (Precedence)
+		if exts[extGTV2] {
+			ctx, err := s.loadEvalContext(id)
 			if err == nil {
-				var report evalv2.EvalReport
-				if json.Unmarshal(content, &report) == nil {
-					// Calculate QScores
-					for k, v := range report.Results {
-						v.Metrics.QScore = v.Metrics.CompositeScore()
-						report.Results[k] = v
-					}
-					c.ReportV2 = &report
-					// We also populate EvalContext from the snapshot if available
-					if report.ContextSnapshot.Meta.TotalTokenCountEstimate > 0 {
-						c.EvalContext = &report.ContextSnapshot
-					}
-				}
+				c.EvalContext = ctx
 			}
 		}
 
-		// If no report or context not fully populated, check GT
-		if c.EvalContext == nil && exts[".gt.v2.json"] {
-			content, err := os.ReadFile(filepath.Join(dir, id+".gt.v2.json"))
+		// Load Report
+		if exts[extReportV2] {
+			report, err := s.loadEvalReport(id)
 			if err == nil {
-				var ctx evalv2.EvalContext
-				if json.Unmarshal(content, &ctx) == nil {
-					c.EvalContext = &ctx
+				c.ReportV2 = report
+				// If no GT loaded yet, use snapshot
+				if c.EvalContext == nil && report.ContextSnapshot.Hash != "" {
+					c.EvalContext = &report.ContextSnapshot
 				}
 			}
 		}
@@ -162,11 +153,6 @@ func (s *Service) GetCase(ctx context.Context, id string) (*Case, error) {
 		Transcripts: make(map[string]string),
 	}
 
-	// 1. Load Transcripts
-	// We scan the directory for [id].[provider].txt or similar patterns
-	// Actually, pattern is [id].[provider] (no extension? or .txt?)
-	// Based on `main.go` snippet: `ext != "" && ext != ".json" && ext != ".flac"`
-
 	files, err := os.ReadDir(s.Config.DatasetDir)
 	if err != nil {
 		return nil, err
@@ -179,37 +165,32 @@ func (s *Service) GetCase(ctx context.Context, id string) (*Case, error) {
 			continue
 		}
 
-		if name == id+".flac" {
+		if name == id+extFlac {
 			found = true
 			continue
 		}
 
 		path := filepath.Join(s.Config.DatasetDir, name)
-		content, _ := os.ReadFile(path)
 
-		if strings.HasSuffix(name, ".gt.v2.json") {
-			var ctx evalv2.EvalContext
-			if json.Unmarshal(content, &ctx) == nil {
-				c.EvalContext = &ctx
+		if strings.HasSuffix(name, extGTV2) {
+			ctx, err := s.loadEvalContext(id)
+			if err == nil {
+				c.EvalContext = ctx
 			}
-		} else if strings.HasSuffix(name, ".report.v2.json") {
-			var report evalv2.EvalReport
-			if json.Unmarshal(content, &report) == nil {
-				for provider, res := range report.Results {
-					res.Metrics.QScore = res.Metrics.CompositeScore()
-					report.Results[provider] = res
+		} else if strings.HasSuffix(name, extReportV2) {
+			report, err := s.loadEvalReport(id)
+			if err == nil {
+				c.ReportV2 = report
+				// If no GT loaded yet, use snapshot
+				if c.EvalContext == nil && report.ContextSnapshot.Hash != "" {
+					c.EvalContext = &report.ContextSnapshot
 				}
-				c.ReportV2 = &report
 			}
 		} else {
 			// Transcripts
-			// Assumption: anything else starting with id. is a transcript
-			// except known extensions
 			ext := filepath.Ext(name)
-			if ext != ".json" && ext != ".flac" {
-				// Provider is the extension without dot? Or the part after ID?
-				// Original logic: `provider := strings.TrimPrefix(ext, ".")`
-				// But wait, if file is `id.provider`, ext is `.provider`.
+			if ext != extJSON && ext != extFlac {
+				content, _ := os.ReadFile(path)
 				provider := strings.TrimPrefix(ext, ".")
 				c.Transcripts[provider] = string(content)
 			}
@@ -223,61 +204,32 @@ func (s *Service) GetCase(ctx context.Context, id string) (*Case, error) {
 	return c, nil
 }
 
-// UpdateCase updates a case based on FieldMask.
-// Replaces SaveGT and SaveContext.
 // UpdateContext updates the eval context for a case.
-// Replaces UpdateCase.
 func (s *Service) UpdateContext(ctx context.Context, req UpdateContextRequest) (*Case, error) {
 	if req.EvalContext == nil {
 		return nil, fmt.Errorf("EvalContext is required")
 	}
 
+	// Recalculate Hash
 	// Update Context file
-	filename := filepath.Join(s.Config.DatasetDir, req.ID+".gt.v2.json")
-	bytes, _ := json.MarshalIndent(req.EvalContext, "", "  ")
-	if err := os.WriteFile(filename, bytes, 0644); err != nil {
+	if err := s.writeEvalContext(req.ID, req.EvalContext); err != nil {
 		return nil, err
 	}
 
 	// Invalidate Report (Side effect)
-	reportPath := filepath.Join(s.Config.DatasetDir, req.ID+".report.v2.json")
+	reportPath := filepath.Join(s.Config.DatasetDir, req.ID+extReportV2)
 	_ = os.Remove(reportPath)
 
 	return s.GetCase(ctx, req.ID)
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Service) GenerateContext(ctx context.Context, req GenerateContextRequest) (*evalv2.EvalContext, error) {
-	// If GroundTruth is provided, we temporarily save it or just use it?
-	// The request has GroundTruth.
-	// Should we save it? The previous logic saved it.
-	// "Stateless" generation implies we just return it, but maybe we need to save GT to valid file.
-	// Let's save GT if provided, as it's a prerequisite.
-
-	if req.GroundTruth != "" {
-		// Internal call to save GT
-		filename := filepath.Join(s.Config.DatasetDir, req.ID+".gt.json")
-		data := struct {
-			GroundTruth string `json:"ground_truth"`
-		}{GroundTruth: req.GroundTruth}
-		bytes, _ := json.MarshalIndent(data, "", "  ")
-		_ = os.WriteFile(filename, bytes, 0644)
-	}
-
 	if s.GenClient == nil {
 		return nil, fmt.Errorf("LLM client not initialized")
 	}
 
 	evaluator := evalv2.NewEvaluator(s.GenClient, s.Config.GenModel, s.Config.EvalModel)
-	audioPath := filepath.Join(s.Config.DatasetDir, req.ID+".flac")
+	audioPath := filepath.Join(s.Config.DatasetDir, req.ID+extFlac)
 
 	// Load transcripts from disk
 	c, err := s.GetCase(ctx, req.ID)
@@ -291,9 +243,8 @@ func (s *Service) GenerateContext(ctx context.Context, req GenerateContextReques
 		return nil, err
 	}
 
-	// Calculate Hash
-	ctxBytes, _ := json.Marshal(ctxResp)
-	hash := md5.Sum(ctxBytes)
+	bytes, _ := json.Marshal(ctxResp)
+	hash := md5.Sum(bytes)
 	ctxResp.Hash = hex.EncodeToString(hash[:])
 
 	return ctxResp, nil
@@ -333,37 +284,78 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (*evalv2.Ev
 		return nil, err
 	}
 
-	// Calculate Context Hash
-	ctxBytes, _ := json.Marshal(req.EvalContext)
-	hash := md5.Sum(ctxBytes)
-	contextHash := hex.EncodeToString(hash[:])
-	resp.ContextHash = contextHash
+	contextHash := req.EvalContext.Hash
 	resp.ContextSnapshot = *req.EvalContext
 
 	// Save Report (Merge with existing)
-	filename := filepath.Join(s.Config.DatasetDir, req.ID+".report.v2.json")
+	existingReport, err := s.loadEvalReport(req.ID)
 	var finalReport *evalv2.EvalReport
 
-	if existingBytes, err := os.ReadFile(filename); err == nil {
-		var existingReport evalv2.EvalReport
-		if json.Unmarshal(existingBytes, &existingReport) == nil {
-			if existingReport.ContextHash == contextHash {
-				for provider, result := range resp.Results {
-					existingReport.Results[provider] = result
-				}
-				finalReport = &existingReport
-			}
+	if err == nil && existingReport.ContextSnapshot.Hash == contextHash {
+		for provider, result := range resp.Results {
+			existingReport.Results[provider] = result
 		}
-	}
-
-	if finalReport == nil {
+		finalReport = existingReport
+	} else {
 		finalReport = resp
 	}
 
-	bytes, _ := json.MarshalIndent(finalReport, "", "  ")
-	if err := os.WriteFile(filename, bytes, 0644); err != nil {
+	if err := s.writeEvalReport(req.ID, finalReport); err != nil {
 		return nil, err
 	}
 
 	return finalReport, nil
+}
+
+func (s *Service) loadEvalReport(id string) (*evalv2.EvalReport, error) {
+	filename := filepath.Join(s.Config.DatasetDir, id+extReportV2)
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var report evalv2.EvalReport
+	if err := json.Unmarshal(content, &report); err != nil {
+		return nil, err
+	}
+	// Calculate QScores
+	for k, v := range report.Results {
+		// TODO: remove this once we switch to MER
+		if v.Metrics.PScore > 1 {
+			v.Metrics.PScore = 0
+		}
+		v.Metrics.QScore = v.Metrics.CompositeScore()
+		report.Results[k] = v
+	}
+	return &report, nil
+}
+
+func (s *Service) loadEvalContext(id string) (*evalv2.EvalContext, error) {
+	filename := filepath.Join(s.Config.DatasetDir, id+extGTV2)
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	var ctx evalv2.EvalContext
+	if err := json.Unmarshal(content, &ctx); err != nil {
+		return nil, err
+	}
+	return &ctx, nil
+}
+
+func (s *Service) writeEvalReport(id string, report *evalv2.EvalReport) error {
+	filename := filepath.Join(s.Config.DatasetDir, id+extReportV2)
+	bytes, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, bytes, 0644)
+}
+
+func (s *Service) writeEvalContext(id string, ctx *evalv2.EvalContext) error {
+	filename := filepath.Join(s.Config.DatasetDir, id+extGTV2)
+	bytes, err := json.MarshalIndent(ctx, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filename, bytes, 0644)
 }

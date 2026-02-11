@@ -12,7 +12,6 @@ type EvalContext struct {
 // EvalReport represents the output of Step 2 ([id].report.v2.json)
 type EvalReport struct {
 	Results         map[string]EvalResult `json:"evaluations"`
-	ContextHash     string                `json:"context_hash,omitempty"`
 	ContextSnapshot EvalContext           `json:"context_snapshot,omitempty"`
 }
 

@@ -64,6 +64,7 @@ export interface ContextMeta {
 export interface EvalContext {
   meta: ContextMeta;
   checkpoints: Checkpoint[];
+  hash?: string;
 }
 
 export interface CheckpointResult {
@@ -96,5 +97,4 @@ export interface EvalResult {
 export interface EvalReport {
   evaluations: Record<string, EvalResult | Partial<EvalResult>>;
   context_snapshot?: EvalContext;
-  context_hash?: string;
 }
