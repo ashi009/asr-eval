@@ -119,14 +119,14 @@ export function CaseDetail({
   const isProcessingThisCase = processingCases.has(currentCase.id);
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
       {/* Header: Case ID + Audio Player */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3 shrink-0 flex items-center gap-4 shadow-sm z-10">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 shrink-0 flex items-center gap-4 shadow-sm z-10">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-mono font-medium text-slate-700 select-all">{currentCase.id}</span>
+          <span className="text-sm font-mono font-medium text-slate-700 dark:text-slate-200 select-all">{currentCase.id}</span>
           <button
             onClick={() => navigator.clipboard.writeText(currentCase.id)}
-            className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-primary transition-colors"
+            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary transition-colors"
             title="Copy Case ID"
           >
             <Copy size={14} />
@@ -141,9 +141,9 @@ export function CaseDetail({
           {evalContext?.meta?.questionable_gt && (
             <RichTooltip
               trigger={
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg shadow-sm cursor-help">
-                  <AlertTriangle size={14} className="text-amber-600" />
-                  <span className="text-xs font-bold text-amber-800 uppercase tracking-tight">GT Quality Alert</span>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg shadow-sm cursor-help">
+                  <AlertTriangle size={14} className="text-amber-600 dark:text-amber-500" />
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-500 uppercase tracking-tight">GT Quality Alert</span>
                 </div>
               }
             >
@@ -160,7 +160,7 @@ export function CaseDetail({
               audioPlayerRef.current?.pause();
               setIsContextModalOpen(true);
             }}
-            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
+            className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
           >
             <Settings size={14} /> {evalContext ? 'Manage Context' : 'Create Context'}
           </button>
@@ -187,7 +187,7 @@ export function CaseDetail({
             enableAudioRealityToggle={true}
             showWeightInBadge={false}
             onCheckpointClick={handleCheckpointClick}
-            className="bg-slate-50 border-b border-slate-200 px-8 py-4 shrink-0"
+            className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-4 shrink-0"
           />
         )}
 
@@ -210,7 +210,7 @@ export function CaseDetail({
         )}
 
         {/* Eval Report View */}
-        <div className="flex-1 bg-white relative flex flex-col min-h-0">
+        <div className="flex-1 bg-white dark:bg-slate-950 relative flex flex-col min-h-0">
           {(currentCase.report_v2 || (currentCase.transcripts && Object.keys(currentCase.transcripts).length > 0)) ? (
             <EvalReportView
               key={currentCase.id}

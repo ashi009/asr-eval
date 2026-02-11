@@ -72,8 +72,8 @@ export function RichTooltip({ trigger, children, className = "", tooltipClassNam
             left: `${coords.left}px`,
             width: '288px',
           }}
-          className={`z-[100] p-0 bg-white shadow-2xl rounded-xl border overflow-hidden animate-in fade-in zoom-in duration-200 pointer-events-none ${coords.side === 'bottom' ? 'origin-top' : 'origin-bottom'
-            } ${tooltipClassName || 'border-slate-200'}`}
+          className={`z-[100] p-0 bg-white dark:bg-slate-900 shadow-2xl rounded-xl border overflow-hidden animate-in fade-in zoom-in duration-200 pointer-events-none ${coords.side === 'bottom' ? 'origin-top' : 'origin-bottom'
+            } ${tooltipClassName || 'border-slate-200 dark:border-slate-700'}`}
         >
           {children}
         </div>,

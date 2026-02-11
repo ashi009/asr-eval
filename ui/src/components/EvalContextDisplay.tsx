@@ -30,19 +30,19 @@ export const EvalContextDisplay: React.FC<EvalContextDisplayProps> = ({
   return (
     <div className={`flex flex-col ${className}`}>
       {/* Business Goal */}
-      <p className="text-sm text-slate-700 leading-relaxed italic opacity-80 mb-3 shrink-0">
+      <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic opacity-80 mb-3 shrink-0">
         {context.meta.business_goal}
       </p>
 
       {/* Toggle & Copy Section */}
       {enableAudioRealityToggle && context.meta.audio_reality_inference && (
         <div className="flex items-center mb-4 shrink-0">
-          <div className="flex items-center bg-slate-100 rounded-full p-0.5">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-full p-0.5">
             <button
               onClick={() => setShowAudioReality(false)}
               className={`text-[10px] font-medium px-3 py-1 rounded-full transition-colors ${!showAudioReality
-                ? 'bg-white text-slate-700 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
             >
               Ground Truth
@@ -50,8 +50,8 @@ export const EvalContextDisplay: React.FC<EvalContextDisplayProps> = ({
             <button
               onClick={() => setShowAudioReality(true)}
               className={`text-[10px] font-medium px-3 py-1 rounded-full transition-colors ${showAudioReality
-                ? 'bg-white text-slate-700 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
+                ? 'bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                 }`}
             >
               Audio Reality Inference
@@ -65,7 +65,7 @@ export const EvalContextDisplay: React.FC<EvalContextDisplayProps> = ({
                 : context.meta.ground_truth;
               navigator.clipboard.writeText(text);
             }}
-            className="ml-2 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            className="ml-2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
             title={showAudioReality ? "Copy Audio Reality Inference" : "Copy Ground Truth"}
           >
             <Copy size={14} />
@@ -83,7 +83,7 @@ export const EvalContextDisplay: React.FC<EvalContextDisplayProps> = ({
           onCheckpointClick={onCheckpointClick}
         />
       </div>
-    </div>
+    </div >
   );
 };
 
@@ -161,8 +161,8 @@ function renderDiffParts(parts: SegmentDiffPart[]): React.ReactNode {
   return (
     <span>
       {parts.map((part, i) => {
-        if (part.added) return <span key={i} className="text-green-600 font-medium">{part.value}</span>;
-        if (part.removed) return <span key={i} className="text-red-400 line-through">{part.value}</span>;
+        if (part.added) return <span key={i} className="text-green-600 dark:text-green-400 font-medium">{part.value}</span>;
+        if (part.removed) return <span key={i} className="text-red-400 dark:text-red-300 line-through">{part.value}</span>;
         return <span key={i}>{part.value}</span>;
       })}
     </span>

@@ -25,9 +25,9 @@ export const CheckpointItem: React.FC<CheckpointItemProps> = ({
 
   // Render the badge (ID + optional weight)
   const renderBadge = () => (
-    <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-black mr-1 align-middle border gap-1 min-w-[1.5rem] ${cp.tier === 1 ? 'bg-red-50 text-red-600 border-red-200' :
-      cp.tier === 2 ? 'bg-amber-50 text-amber-600 border-amber-200' :
-        'bg-slate-50 text-slate-500 border-slate-200'
+    <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[9px] font-black mr-1 align-middle border gap-1 min-w-[1.5rem] ${cp.tier === 1 ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50' :
+      cp.tier === 2 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50' :
+        'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
       }`}>
       {cp.id}
       {showWeightInBadge && (
@@ -47,7 +47,7 @@ export const CheckpointItem: React.FC<CheckpointItemProps> = ({
           className={`inline rounded cursor-help transition-all duration-200 group ${cp.tier === 1 ? 'underline decoration-[3px] underline-offset-4 decoration-red-400' :
             cp.tier === 2 ? 'underline decoration-[3px] underline-offset-4 decoration-amber-400' :
               ''
-            } hover:bg-slate-100 ${isNew ? 'bg-green-50/50 decoration-green-300' : ''} ${cp.start_ms !== undefined && onCheckpointClick ? 'cursor-pointer hover:bg-blue-50' : ''
+            } hover:bg-slate-100 dark:hover:bg-slate-800 ${isNew ? 'bg-green-50/50 dark:bg-green-900/20 decoration-green-300' : ''} ${cp.start_ms !== undefined && onCheckpointClick ? 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20' : ''
             }`}
           onClick={() => {
             if (cp.start_ms !== undefined && onCheckpointClick) {
@@ -65,9 +65,9 @@ export const CheckpointItem: React.FC<CheckpointItemProps> = ({
       <div className="p-4 space-y-3 text-left max-w-xs">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black border ${cp.tier === 1 ? 'bg-red-50 text-red-700 border-red-100' :
-              cp.tier === 2 ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                'bg-slate-50 text-slate-700 border-slate-100'
+            <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-black border ${cp.tier === 1 ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-100 dark:border-red-900/50' :
+              cp.tier === 2 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/50' :
+                'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-100 dark:border-slate-700'
               }`}>
               {cp.id}
             </span>
@@ -112,7 +112,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   const maxWeight = Math.max(...checkpoints.map(cp => cp.weight));
 
   return (
-    <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-700 leading-relaxed ${className}`}>
+    <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-700 dark:text-slate-300 leading-relaxed ${className}`}>
       {checkpoints.map((cp) => (
         <CheckpointItem
           key={cp.id}

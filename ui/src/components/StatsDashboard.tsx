@@ -5,6 +5,7 @@ import { getASRProviderConfig, isProviderEnabled } from '../config';
 import { computeWeightedKDE } from '../utils/statistics';
 import { X } from 'lucide-react';
 
+
 interface StatsDashboardProps {
   cases: Case[];
   isOpen: boolean;
@@ -36,6 +37,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [activeMetric, setActiveMetric] = useState<MetricType>('Q');
+
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -123,7 +125,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
 
     // Create tooltip div
     const tooltip = d3.select("body").append("div")
-      .attr("class", "stats-tooltip fixed z-[100] bg-white shadow-2xl rounded-xl border border-slate-200 p-3 text-[11px] pointer-events-none opacity-0 transition-opacity duration-200")
+      .attr("class", "stats-tooltip fixed z-[100] bg-white dark:bg-slate-800 shadow-2xl rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-[11px] pointer-events-none opacity-0 transition-opacity duration-200")
       .style("max-width", "220px");
 
     // Dynamic left margin based on longest label
@@ -149,7 +151,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
       .attr("transform", `translate(0,${innerHeight})`)
       .call(d3.axisBottom(x).ticks(10))
       .selectAll("text")
-      .attr("class", "text-xs fill-slate-500");
+      .attr("class", "text-xs fill-slate-500 dark:fill-slate-400");
 
     // Y Axis: Providers
     const y = d3.scaleBand()
@@ -167,7 +169,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
       .attr("x2", d => x(d))
       .attr("y1", 0)
       .attr("y2", innerHeight)
-      .attr("stroke", "#e2e8f0")
+      .attr("class", "stroke-slate-200 dark:stroke-slate-700")
       .attr("stroke-dasharray", "2,3");
 
     // Calculate density data based on active metric
@@ -220,7 +222,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .attr("x2", innerWidth)
         .attr("y1", baselineY)
         .attr("y2", baselineY)
-        .attr("stroke", "#cbd5e1")
+        .attr("class", "stroke-slate-300 dark:stroke-slate-600")
         .attr("stroke-dasharray", "4,4")
         .attr("stroke-width", 1);
 
@@ -235,7 +237,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .attr("width", 12)
         .attr("height", 12)
         .append("xhtml:div")
-        .attr("class", `w-3 h-3 rounded-full ${d.dotClass} border-2 border-white shadow-sm`);
+        .attr("class", `w-3 h-3 rounded-full ${d.dotClass} border-2 border-white dark:border-slate-800 shadow-sm`);
 
       // Invisible hover rect
       providerGroup.append("rect")
@@ -248,13 +250,13 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .on("mouseenter", function (event: MouseEvent) {
           violinPath.attr("fill-opacity", 0.55).attr("stroke-width", 2.5);
           tooltip.style("opacity", 1).html(
-            `<div style="font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span class="w-2.5 h-2.5 rounded-full ${d.dotClass} inline-block"></span>${d.displayName}</div>` +
-            `<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;color:#475569">` +
-            `<span style="color:#94a3b8;font-weight:${activeMetric === 'Q' ? '700' : '400'}">W-Q</span><span style="text-align:right;font-weight:${activeMetric === 'Q' ? '700' : '400'}">${d.weightedQ.toFixed(1)}</span>` +
-            `<span style="color:#94a3b8;font-weight:${activeMetric === 'S' ? '700' : '400'}">W-S</span><span style="text-align:right;font-weight:${activeMetric === 'S' ? '700' : '400'}">${d.weightedS.toFixed(1)}</span>` +
-            `<span style="color:#94a3b8;font-weight:${activeMetric === 'P' ? '700' : '400'}">W-P</span><span style="text-align:right;font-weight:${activeMetric === 'P' ? '700' : '400'}">${d.weightedP.toFixed(1)}</span>` +
-            `<span style="color:#94a3b8">Cases</span><span style="text-align:right">${d.caseCount}</span>` +
-            `<span style="color:#94a3b8">Tokens</span><span style="text-align:right">${d.totalTokens.toLocaleString()}</span>` +
+            `<div class="font-bold mb-1 flex items-center gap-1.5 text-slate-900 dark:text-slate-100"><span class="w-2.5 h-2.5 rounded-full ${d.dotClass} inline-block"></span>${d.displayName}</div>` +
+            `<div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-slate-600 dark:text-slate-400">` +
+            `<span class="text-slate-400 ${activeMetric === 'Q' ? 'font-bold' : ''}">W-Q</span><span class="text-right ${activeMetric === 'Q' ? 'font-bold' : ''}">${d.weightedQ.toFixed(1)}</span>` +
+            `<span class="text-slate-400 ${activeMetric === 'S' ? 'font-bold' : ''}">W-S</span><span class="text-right ${activeMetric === 'S' ? 'font-bold' : ''}">${d.weightedS.toFixed(1)}</span>` +
+            `<span class="text-slate-400 ${activeMetric === 'P' ? 'font-bold' : ''}">W-P</span><span class="text-right ${activeMetric === 'P' ? 'font-bold' : ''}">${d.weightedP.toFixed(1)}</span>` +
+            `<span class="text-slate-400">Cases</span><span class="text-right">${d.caseCount}</span>` +
+            `<span class="text-slate-400">Tokens</span><span class="text-right">${d.totalTokens.toLocaleString()}</span>` +
             `</div>`
           );
           tooltip
@@ -292,7 +294,7 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
         .style("text-align", "right")
         .style("font-size", "11px")
         .style("font-weight", "600")
-        .attr("class", d.textClass)
+        .attr("class", "text-slate-700 dark:text-slate-200")
         .style("line-height", "1.2")
         .style("overflow", "hidden")
         .style("text-overflow", "ellipsis")
@@ -308,13 +310,13 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white border border-slate-200 rounded-xl shadow-2xl w-[85vw] max-w-[1100px] max-h-[85vh] flex flex-col overflow-hidden"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl w-[85vw] max-w-[1100px] max-h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-2.5 border-b border-slate-200 bg-white shrink-0">
-          <span className="text-sm font-bold text-slate-700">Performance Statistics</span>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors">
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Performance Statistics</span>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -328,14 +330,14 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
           <div className="px-6 pb-6 pt-2 flex flex-col gap-6">
             {/* Controls */}
             <div className="flex justify-center">
-              <div className="inline-flex bg-slate-100 p-1 rounded-lg">
+              <div className="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                 {(['Q', 'S', 'P'] as MetricType[]).map(metric => (
                   <button
                     key={metric}
                     onClick={() => setActiveMetric(metric)}
                     className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${activeMetric === metric
-                        ? 'bg-white text-slate-800 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
+                      ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                       }`}
                   >
                     W-{metric} Score
@@ -345,38 +347,38 @@ export function StatsDashboard({ cases, isOpen, onClose }: StatsDashboardProps) 
             </div>
 
             {/* Table */}
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
               <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="px-4 py-3">Provider</th>
-                    <th className={`px-4 py-3 text-right ${activeMetric === 'Q' ? 'text-indigo-600 font-bold' : ''}`}>W-Q Score</th>
-                    <th className={`px-4 py-3 text-right ${activeMetric === 'S' ? 'text-indigo-600 font-bold' : ''}`}>W-S Score</th>
-                    <th className={`px-4 py-3 text-right ${activeMetric === 'P' ? 'text-indigo-600 font-bold' : ''}`}>W-P Score</th>
+                    <th className={`px-4 py-3 text-right ${activeMetric === 'Q' ? 'font-bold text-slate-800 dark:text-slate-100' : ''}`}>W-Q Score</th>
+                    <th className={`px-4 py-3 text-right ${activeMetric === 'S' ? 'font-bold text-slate-800 dark:text-slate-100' : ''}`}>W-S Score</th>
+                    <th className={`px-4 py-3 text-right ${activeMetric === 'P' ? 'font-bold text-slate-800 dark:text-slate-100' : ''}`}>W-P Score</th>
                     <th className="px-4 py-3 text-right">Cases</th>
                     <th className="px-4 py-3 text-right">Tokens</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                   {stats.map(s => (
-                    <tr key={s.provider} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-slate-700 flex items-center gap-2">
+                    <tr key={s.provider} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-slate-700 dark:text-slate-200 flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${s.dotClass}`}></span>
                         {s.displayName}
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'Q' ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'Q' ? 'font-bold text-slate-800 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400'}`}>
                         {s.weightedQ.toFixed(1)}
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'S' ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'S' ? 'font-bold text-slate-800 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400'}`}>
                         {s.weightedS.toFixed(1)}
                       </td>
-                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'P' ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                      <td className={`px-4 py-2.5 text-right font-mono ${activeMetric === 'P' ? 'font-bold text-slate-800 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400'}`}>
                         {s.weightedP.toFixed(1)}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-slate-500">
+                      <td className="px-4 py-2.5 text-right text-slate-500 dark:text-slate-400">
                         {s.caseCount}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-slate-500">
+                      <td className="px-4 py-2.5 text-right text-slate-500 dark:text-slate-400">
                         {s.totalTokens.toLocaleString()}
                       </td>
                     </tr>
